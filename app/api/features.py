@@ -11,6 +11,9 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from app.services.alerts import evaluate_price_alert
+from app.services.alert_store import AlertStore
+from app.services.settlement_rules import SettlementRuleProfile, compare_settlement_profiles
+from app.services.settlement_store import PersistentSettlementRuleRegistry
 from app.services.analyst_workspace import AnalystWorkspaceStore
 from app.services.backtesting import chronological_split, evaluate_forecasts
 from app.services.bet_slip import reconstruct_bet_slip
@@ -28,6 +31,8 @@ DB_PATH = os.getenv("FOOTBALL_INTEL_DB_PATH", "data/football_intel.sqlite3")
 workspace_store = AnalystWorkspaceStore(DB_PATH)
 results_store = HistoricalResultsStore(DB_PATH)
 risk_ledger = RiskLedger(DB_PATH)
+alert_store = AlertStore(DB_PATH)
+settlement_rule_registry = PersistentSettlementRuleRegistry(DB_PATH)
 
 router = APIRouter(prefix="/api/v1", tags=["extended-intelligence"])
 
@@ -102,6 +107,58 @@ def model_backtest(payload: dict[str, Any]):
         return result
     except (KeyError, ValueError) as exc:
         raise _bad_request(ValueError(str(exc))) from exc
+
+
+@router.post("/alerts/rules")
+def create_market_alert_rule(payload: dict[str, Any]):
+    try:
+        return alert_store.create_rule(
+            owner_id=payload["owner_id"],
+            provider_id=payload["provider_id"],
+            comparable_market_key=payload["comparable_market_key"],
+            threshold_percent=float(payload.get("threshold_percent", 5.0)),
+            cooldown_seconds=int(payload.get("cooldown_seconds", 900)),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise _bad_request(ValueError(str(exc))) from exc
+
+
+@router.get("/alerts/rules")
+def list_market_alert_rules(owner_id: str):
+    return {"rules": alert_store.list_rules(owner_id)}
+
+
+@router.post("/alerts/rules/{rule_id}/evaluate")
+def evaluate_persisted_alert_rule(rule_id: str, payload: dict[str, Any]):
+    try:
+        rule = alert_store.get_rule(rule_id)
+        evaluation = evaluate_price_alert(
+            payload.get("history", []),
+            threshold_percent=rule["threshold_percent"],
+            minimum_observations=int(payload.get("minimum_observations", 2)),
+            rule_id=rule_id,
+        )
+        persisted = None
+        if evaluation.get("triggered"):
+            persisted = alert_store.record_trigger(
+                rule_id,
+                str(payload.get("dedupe_key", rule["comparable_market_key"])),
+                evaluation["latest_observed_at"],
+                evaluation,
+            )
+        return {"evaluation": evaluation, "persistence": persisted}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (TypeError, ValueError) as exc:
+        raise _bad_request(ValueError(str(exc))) from exc
+
+
+@router.get("/alerts/events")
+def list_market_alert_events(owner_id: str, limit: int = 100):
+    try:
+        return {"events": alert_store.list_events(owner_id, limit)}
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
 
 
 @router.post("/alerts/price-movement")
@@ -239,6 +296,40 @@ def record_historical_result(payload: dict[str, Any]):
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise _bad_request(ValueError(str(exc))) from exc
+
+
+@router.post("/settlement-rules/register")
+def register_settlement_rule(payload: dict[str, Any]):
+    """Store a submitted rule profile as unverified; an authorised review is still required."""
+    try:
+        profile_data = dict(payload)
+        profile_data["verification_status"] = "unverified"
+        profile_data["verified_at"] = None
+        profile = SettlementRuleProfile(**profile_data)
+        settlement_rule_registry.register(profile)
+        return {"stored": True, "profile_id": profile.profile_id,
+                "verification_status": "unverified",
+                "note": "The submitted source has not been independently reviewed."}
+    except (TypeError, ValueError) as exc:
+        raise _bad_request(ValueError(str(exc))) from exc
+
+
+@router.get("/settlement-rules/persisted")
+def list_persisted_settlement_rules():
+    profiles = settlement_rule_registry.list_profiles()
+    return {"profiles": profiles,
+            "verified_profile_count": sum(x["verification_status"] == "verified" for x in profiles)}
+
+
+@router.get("/settlement-rules/persisted/compare")
+def compare_persisted_settlement_rules(left_profile_id: str, right_profile_id: str):
+    try:
+        return compare_settlement_profiles(
+            settlement_rule_registry.get(left_profile_id),
+            settlement_rule_registry.get(right_profile_id),
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/results/{canonical_event_id}")

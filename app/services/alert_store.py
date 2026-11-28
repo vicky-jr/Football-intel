@@ -42,6 +42,11 @@ class AlertStore:
         return {"rule_id":rule_id,"owner_id":owner_id,"provider_id":provider_id,
           "comparable_market_key":comparable_market_key,"threshold_percent":threshold_percent,
           "cooldown_seconds":cooldown_seconds,"enabled":True,"created_at":now}
+    def get_rule(self,rule_id:str)->dict[str,Any]:
+        with self._connection() as db:
+            row=db.execute("SELECT * FROM alert_rules WHERE rule_id=?",(rule_id,)).fetchone()
+        if not row:raise KeyError("alert rule not found")
+        return {**dict(row),"enabled":bool(row["enabled"])}
     def list_rules(self,owner_id:str)->list[dict[str,Any]]:
         with self._connection() as db:rows=db.execute("SELECT * FROM alert_rules WHERE owner_id=? ORDER BY created_at DESC",(owner_id,)).fetchall()
         return [{**dict(x),"enabled":bool(x["enabled"])} for x in rows]
