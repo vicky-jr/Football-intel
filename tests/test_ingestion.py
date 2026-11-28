@@ -1,5 +1,8 @@
 import asyncio
 
+import httpx
+import pytest
+
 from app.providers.base import ProviderEvent, ProviderMarket, ProviderSelection
 from app.providers.registry import ProviderRegistry
 from app.services.ingestion import IngestionOrchestrator
@@ -64,6 +67,16 @@ def make_orchestrator(provider, *, retries=1):
         registry, inventory, max_concurrency=2, max_retries=retries
     )
     return orchestrator, inventory
+
+
+def _http_status_error(status_code, headers=None):
+    request = httpx.Request("GET", "https://provider.example/feed")
+    response = httpx.Response(status_code, headers=headers, request=request)
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        return exc
+    raise AssertionError(f"HTTP {status_code} should be an error")
 
 
 def test_scan_discovers_and_preserves_all_returned_markets():
@@ -194,3 +207,53 @@ def test_scan_reports_unknown_requested_sport_as_coverage_warning():
     assert not report.complete
     assert report.events_discovered == 0
     assert any("not present in this provider catalogue" in item for item in report.coverage_warnings)
+
+
+@pytest.mark.parametrize("status_code", [408, 425, 429, 500, 502, 503, 599])
+def test_retry_retries_transient_http_statuses(status_code):
+    orchestrator, _ = make_orchestrator(MockProvider(), retries=1)
+    calls = 0
+
+    async def operation():
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise _http_status_error(status_code, {"retry-after": "0"})
+        return "recovered"
+
+    assert asyncio.run(orchestrator._retry(operation)) == "recovered"
+    assert calls == 2
+
+
+@pytest.mark.parametrize("status_code", [400, 401, 403, 404, 422])
+def test_retry_does_not_repeat_permanent_http_statuses(status_code):
+    orchestrator, _ = make_orchestrator(MockProvider(), retries=3)
+    calls = 0
+
+    async def operation():
+        nonlocal calls
+        calls += 1
+        raise _http_status_error(status_code)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        asyncio.run(orchestrator._retry(operation))
+    assert calls == 1
+
+
+def test_retry_preserves_retry_after_http_date_support():
+    error = _http_status_error(429, {"Retry-After": "Wed, 21 Oct 2030 07:28:00 GMT"})
+    assert IngestionOrchestrator._retry_after_seconds(error) > 0
+
+
+def test_retry_does_not_repeat_unclassified_programming_errors():
+    orchestrator, _ = make_orchestrator(MockProvider(), retries=3)
+    calls = 0
+
+    async def operation():
+        nonlocal calls
+        calls += 1
+        raise ValueError("invalid provider response")
+
+    with pytest.raises(ValueError, match="invalid provider response"):
+        asyncio.run(orchestrator._retry(operation))
+    assert calls == 1

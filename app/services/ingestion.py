@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, TypeVar
 
+import httpx
+
 from app.providers.base import OddsProvider, ProviderEvent
 from app.providers.registry import ProviderRegistry
 from app.services.market_inventory import MarketInventory
@@ -77,32 +79,52 @@ class IngestionOrchestrator:
         self.max_retries = max_retries
         self.retry_delay_seconds = retry_delay_seconds
 
+    @staticmethod
+    def _is_retryable(exc: Exception) -> bool:
+        """Retry only transient transport failures and explicitly transient HTTP statuses."""
+        if isinstance(exc, httpx.HTTPStatusError):
+            status = exc.response.status_code
+            return status in {408, 425, 429} or 500 <= status <= 599
+        return isinstance(
+            exc,
+            (httpx.TimeoutException, httpx.TransportError, TimeoutError),
+        )
+
+    @staticmethod
+    def _retry_after_seconds(exc: Exception) -> float | None:
+        """Read Retry-After as seconds or an HTTP date when an error response provides it."""
+        response = getattr(exc, "response", None)
+        headers = getattr(response, "headers", {}) if response is not None else {}
+        raw_retry_after = headers.get("retry-after") if headers else None
+        if not raw_retry_after:
+            return None
+        try:
+            return max(0.0, float(raw_retry_after))
+        except (TypeError, ValueError):
+            try:
+                retry_time = parsedate_to_datetime(raw_retry_after)
+                if retry_time.tzinfo is None:
+                    retry_time = retry_time.replace(tzinfo=timezone.utc)
+                return max(
+                    0.0,
+                    (retry_time - datetime.now(timezone.utc)).total_seconds(),
+                )
+            except (TypeError, ValueError, OverflowError, OSError):
+                return None
+
     async def _retry(self, operation: Callable[[], Awaitable[T]]) -> T:
         for attempt in range(self.max_retries + 1):
             try:
                 return await operation()
             except Exception as exc:
-                if attempt >= self.max_retries:
+                if attempt >= self.max_retries or not self._is_retryable(exc):
                     raise
-                retry_after = None
-                response = getattr(exc, "response", None)
-                headers = getattr(response, "headers", {}) if response is not None else {}
-                raw_retry_after = headers.get("retry-after") if headers else None
-                if raw_retry_after:
-                    try:
-                        retry_after = max(0.0, float(raw_retry_after))
-                    except (TypeError, ValueError):
-                        try:
-                            retry_time = parsedate_to_datetime(raw_retry_after)
-                            if retry_time.tzinfo is None:
-                                retry_time = retry_time.replace(tzinfo=timezone.utc)
-                            retry_after = max(
-                                0.0,
-                                (retry_time - datetime.now(timezone.utc)).total_seconds(),
-                            )
-                        except (TypeError, ValueError, OverflowError):
-                            retry_after = None
-                delay = retry_after if retry_after is not None else self.retry_delay_seconds * (2 ** attempt)
+                retry_after = self._retry_after_seconds(exc)
+                delay = (
+                    retry_after
+                    if retry_after is not None
+                    else self.retry_delay_seconds * (2 ** attempt)
+                )
                 if delay:
                     await asyncio.sleep(delay)
         raise RuntimeError("unreachable retry state")
