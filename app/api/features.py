@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.services.alerts import evaluate_price_alert
 from app.services.alert_store import AlertStore
@@ -17,6 +17,7 @@ from app.services.settlement_store import PersistentSettlementRuleRegistry
 from app.services.analyst_workspace import AnalystWorkspaceStore
 from app.services.backtesting import chronological_split, evaluate_forecasts
 from app.services.bet_slip import reconstruct_bet_slip
+from app.services.ocr import TesseractBetSlipOCR
 from app.services.bookmaker_intelligence import summarize_bookmaker_behaviour
 from app.services.confidence import assess_evidence_confidence
 from app.services.event_matching import match_events
@@ -172,6 +173,21 @@ def market_price_alert(payload: dict[str, Any]):
         )
     except (TypeError, ValueError) as exc:
         raise _bad_request(ValueError(str(exc))) from exc
+
+
+@router.post("/bet-slips/ocr")
+async def bet_slip_ocr(request: Request, stake: float | None = Query(default=None, gt=0)):
+    """OCR a screenshot in memory; no image bytes are retained by this endpoint."""
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if content_type not in {"image/png", "image/jpeg", "image/webp"}:
+        raise HTTPException(status_code=415, detail="send a PNG, JPEG or WebP image")
+    image_bytes = await request.body()
+    try:
+        return TesseractBetSlipOCR().extract_and_reconstruct(image_bytes, stake=stake)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
 
 
 @router.post("/bet-slips/reconstruct")

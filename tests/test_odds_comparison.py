@@ -22,3 +22,10 @@ def test_market_and_settlement_mismatches_block_comparison():
 def test_incomplete_outcome_set_does_not_claim_overround():
  row=quote("a","home",2);row["outcome_set_complete"]=False
  assert compare_bookmaker_odds([row])["overrounds"][0]["overround"] is None
+
+def test_unknown_freshness_is_not_treated_as_verified_comparable_quote():
+    row=quote("a","home",2.0)
+    row["freshness"]="unknown"
+    result=compare_bookmaker_odds([row])
+    assert result["status"]=="not_comparable"
+    assert result["reason"]=="quote_freshness_not_verified"

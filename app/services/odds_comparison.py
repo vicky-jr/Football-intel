@@ -17,8 +17,8 @@ def compare_bookmaker_odds(entries:list[dict[str,Any]])->dict[str,Any]:
         return {"status":"not_comparable","reason":"canonical_market_identity_mismatch"}
     if any(x.get("settlement_comparable") is not True for x in entries):
         return {"status":"not_comparable","reason":"settlement_rules_not_verified"}
-    if any(x.get("freshness") not in {"fresh","unknown"} for x in entries):
-        return {"status":"not_comparable","reason":"stale_or_invalid_quote"}
+    if any(x.get("freshness") != "fresh" for x in entries):
+        return {"status":"not_comparable","reason":"quote_freshness_not_verified"}
     if any(not x.get("selection_key") or not x.get("bookmaker") for x in entries):
         raise ValueError("each quote requires bookmaker and selection_key")
     grouped:dict[str,list[dict[str,Any]]]=defaultdict(list); quotes=[]
