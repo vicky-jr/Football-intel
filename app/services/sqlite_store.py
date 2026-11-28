@@ -536,6 +536,7 @@ class SQLiteMarketStore:
                     "snapshot_ids": set(),
                     "event_ids": set(),
                     "market_names": set(),
+                    "market_observations": 0,
                     "selections_received": 0,
                     "last_captured_at": row["captured_at"],
                     "sports": set(),
@@ -545,6 +546,7 @@ class SQLiteMarketStore:
                 stats["event_ids"].add(row["source_event_id"])
                 if not stats["source_book_name"] and market.get("source_book_name"):
                     stats["source_book_name"] = market["source_book_name"]
+                stats["market_observations"] += 1
                 if market.get("name"):
                     stats["market_names"].add(str(market["name"]))
                 stats["selections_received"] += len(market.get("selections", []))
@@ -562,7 +564,8 @@ class SQLiteMarketStore:
                 "source_book_name": stats["source_book_name"],
                 "snapshots_observed": len(stats["snapshot_ids"]),
                 "events_observed": len(stats["event_ids"]),
-                "market_observations": len(stats["market_names"]),
+                "market_observations": stats["market_observations"],
+                "distinct_market_names": len(stats["market_names"]),
                 "market_names_observed": sorted(stats["market_names"]),
                 "selections_received": stats["selections_received"],
                 "sports_observed": sorted(stats["sports"]),

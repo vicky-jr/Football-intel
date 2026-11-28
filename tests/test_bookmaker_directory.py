@@ -231,3 +231,44 @@ def test_source_identity_suggestions_flag_ambiguous_names():
     ])[0]
     assert suggestion["suggestion_status"] == "ambiguous"
     assert suggestion["candidate_operator_ids"] == ["brand-one", "brand-two"]
+
+
+def test_bookmaker_coverage_api_counts_only_verified_source_links(monkeypatch):
+    from app.api import bookmakers as bookmaker_api
+
+    directory = BookmakerDirectory(profiles=[
+        BookmakerProfile("example-book", "Example Book"),
+    ])
+    directory.add_source_link("example-book", "feed-a", "verified-id", "Example")
+    directory.set_source_link_status(
+        "example-book", "feed-a", "verified-id", "verified",
+        evidence_url="https://example.org/identity-proof",
+        last_checked_at="2026-11-28T14:00:00Z",
+    )
+    directory.add_source_link("example-book", "feed-b", "candidate-id", "Example New")
+
+    class FakeMarketStore:
+        def source_book_coverage_report(self):
+            return {
+                "source_books": [
+                    {
+                        "provider_id": "feed-a",
+                        "source_book_id": "verified-id",
+                        "market_observations": 12,
+                    },
+                    {
+                        "provider_id": "feed-b",
+                        "source_book_id": "candidate-id",
+                        "market_observations": 99,
+                    },
+                ]
+            }
+
+    monkeypatch.setattr(bookmaker_api, "bookmaker_directory", directory)
+    monkeypatch.setattr(bookmaker_api, "_market_store", FakeMarketStore())
+    response = bookmaker_api.get_bookmaker_coverage("example-book")
+
+    assert response["coverage_state"] == "observations_found"
+    assert len(response["observed_market_coverage"]) == 1
+    assert response["observed_market_coverage"][0]["provider_id"] == "feed-a"
+    assert len(response["candidate_source_links_not_counted"]) == 1
