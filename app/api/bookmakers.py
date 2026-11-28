@@ -99,6 +99,55 @@ def list_bookmakers(
     }
 
 
+@router.get("/{operator_id}/coverage")
+def get_bookmaker_coverage(operator_id: str):
+    """Report provider observations mapped to an operator through verified links."""
+    try:
+        profile = bookmaker_directory.get(operator_id)
+        links = bookmaker_directory.list_source_links(profile.operator_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if _market_store is None:
+        raise HTTPException(status_code=503, detail="market discovery store is not configured")
+
+    verified_links = [link for link in links if link["verification_status"] == "verified"]
+    candidate_links = [link for link in links if link["verification_status"] == "candidate"]
+    observations = _market_store.source_book_coverage_report()
+    index = {
+        (item["provider_id"], item["source_book_id"]): item
+        for item in observations["source_books"]
+    }
+    mapped_observations = []
+    verified_without_data = []
+    for link in verified_links:
+        observed = index.get((link["provider_id"], link["source_book_id"]))
+        if observed:
+            mapped_observations.append(observed)
+        else:
+            verified_without_data.append(link)
+    if mapped_observations:
+        state = "observations_found"
+    elif verified_links:
+        state = "verified_identity_without_market_observations"
+    else:
+        state = "no_verified_source_identity"
+
+    return {
+        "operator_id": profile.operator_id,
+        "display_name": profile.display_name,
+        "coverage_state": state,
+        "verified_source_links": verified_links,
+        "candidate_source_links_not_counted": candidate_links,
+        "verified_links_without_observations": verified_without_data,
+        "observed_market_coverage": mapped_observations,
+        "note": (
+            "This is measured feed observation coverage only. It does not prove "
+            "that every sport, event, market, selection, region or live package "
+            "offered by the bookmaker has been collected."
+        ),
+    }
+
+
 @router.get("/{operator_id}/sources")
 def list_bookmaker_sources(operator_id: str):
     """List provider-native identities associated with a bookmaker, including candidates."""

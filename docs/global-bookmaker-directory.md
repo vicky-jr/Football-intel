@@ -76,3 +76,15 @@ persisted as source links and are not used in price comparisons until a trusted
 review process records and verifies the association.
 
 An optional `provider_id` query parameter narrows suggestions to one source feed.
+
+
+## Observed bookmaker market coverage
+
+- GET /api/v1/bookmakers/{operator_id}/coverage joins only verified source
+  identity links to stored provider market observations.
+- Candidate identity links are displayed separately and never counted as confirmed
+  bookmaker coverage.
+- The report includes source-native book IDs, events, observed markets, selections,
+  sports, competitions and the last captured time.
+- An observation count is not proof that every market offered by a bookmaker was
+  enumerated. Completeness requires a separate feed-level completeness check.

@@ -203,3 +203,69 @@ def test_discovery_inventory_validates_stage_and_limit(tmp_path):
         store.discovery_inventory(stage="events")
     with pytest.raises(ValueError, match="limit"):
         store.discovery_inventory(limit=0)
+
+
+def test_source_book_coverage_reports_observed_provider_book_inventory(tmp_path):
+    from datetime import datetime, timezone
+    from app.providers.base import ProviderEvent, ProviderMarket, ProviderSelection
+    from app.services.market_inventory import EventMarketSnapshot
+
+    store = SQLiteMarketStore(tmp_path / "book-coverage.sqlite3")
+    event = ProviderEvent(
+        provider="feed-a", source_event_id="event-a", sport="basketball",
+        competition="league-a", name="Home v Away", start_time=None, status="scheduled",
+    )
+    store.start_scan("scan-a", "feed-a", "2026-11-28", "prematch",
+                     "2026-11-28T10:00:00+00:00")
+    store.record_event(event, "2026-11-28T10:00:00+00:00")
+    markets = (
+        ProviderMarket(
+            provider="feed-a", source_event_id="event-a",
+            source_market_id="market-1", name="Moneyline", period="full_game",
+            line=None, status="active",
+            selections=[ProviderSelection("home", "Home", 1.8)],
+            source_book_id="book-xyz", source_book_name="Example Book",
+        ),
+        ProviderMarket(
+            provider="feed-a", source_event_id="event-a",
+            source_market_id="market-2", name="Total Points", period="full_game",
+            line=210.5, status="active",
+            selections=[
+                ProviderSelection("over", "Over", 1.9),
+                ProviderSelection("under", "Under", 1.9),
+            ],
+            source_book_id="book-xyz", source_book_name="Example Book",
+        ),
+        ProviderMarket(
+            provider="feed-a", source_event_id="event-a",
+            source_market_id="market-3", name="Unattributed market",
+            period="full_game", line=None, status="active",
+            selections=[ProviderSelection("yes", "Yes", 2.0)],
+        ),
+    )
+    store.record_snapshot(
+        EventMarketSnapshot(
+            provider="feed-a", source_event_id="event-a",
+            captured_at=datetime(2026, 11, 28, 10, 0, tzinfo=timezone.utc),
+            markets=markets,
+        ),
+        "scan-a",
+    )
+
+    report = store.source_book_coverage_report()
+    assert report["source_book_count"] == 1
+    assert report["unattributed_market_observations"] == 1
+    observed = report["source_books"][0]
+    assert observed["provider_id"] == "feed-a"
+    assert observed["source_book_id"] == "book-xyz"
+    assert observed["source_book_name"] == "Example Book"
+    assert observed["events_observed"] == 1
+    assert observed["market_observations"] == 2
+    assert observed["selections_received"] == 3
+    assert observed["sports_observed"] == ["basketball"]
+    assert observed["competitions_observed"] == ["league-a"]
+
+
+def test_source_book_coverage_can_be_filtered_by_provider(tmp_path):
+    store = SQLiteMarketStore(tmp_path / "provider-coverage.sqlite3")
+    assert store.source_book_coverage_report(provider="missing-feed")["source_book_count"] == 0

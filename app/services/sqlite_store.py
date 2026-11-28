@@ -488,3 +488,97 @@ class SQLiteMarketStore:
                 (provider, source_event_id),
             ).fetchone()
         return row["sport"] if row else None
+
+
+    def source_book_coverage_report(
+        self, provider: str | None = None
+    ) -> dict[str, Any]:
+        """Summarize actually observed markets by provider-native bookmaker ID."""
+        clauses = []
+        parameters: list[Any] = []
+        if provider:
+            clauses.append("provider = ?")
+            parameters.append(provider)
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        with self._connection() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT id, provider, source_event_id, captured_at, markets_json
+                FROM market_snapshots
+                {where}
+                ORDER BY captured_at DESC, id DESC
+                """,
+                parameters,
+            ).fetchall()
+            event_rows = connection.execute(
+                "SELECT provider, source_event_id, sport, competition FROM provider_events"
+            ).fetchall()
+
+        event_details = {
+            (row["provider"], row["source_event_id"]): {
+                "sport": row["sport"], "competition": row["competition"]
+            }
+            for row in event_rows
+        }
+        grouped: dict[tuple[str, str], dict[str, Any]] = {}
+        unattributed_observations = 0
+        for row in rows:
+            for market in json.loads(row["markets_json"]):
+                book_id = market.get("source_book_id")
+                if book_id is None or str(book_id).strip() == "":
+                    unattributed_observations += 1
+                    continue
+                key = (row["provider"], str(book_id))
+                stats = grouped.setdefault(key, {
+                    "provider_id": row["provider"],
+                    "source_book_id": str(book_id),
+                    "source_book_name": market.get("source_book_name"),
+                    "snapshot_ids": set(),
+                    "event_ids": set(),
+                    "market_names": set(),
+                    "selections_received": 0,
+                    "last_captured_at": row["captured_at"],
+                    "sports": set(),
+                    "competitions": set(),
+                })
+                stats["snapshot_ids"].add(row["id"])
+                stats["event_ids"].add(row["source_event_id"])
+                if not stats["source_book_name"] and market.get("source_book_name"):
+                    stats["source_book_name"] = market["source_book_name"]
+                if market.get("name"):
+                    stats["market_names"].add(str(market["name"]))
+                stats["selections_received"] += len(market.get("selections", []))
+                details = event_details.get((row["provider"], row["source_event_id"]), {})
+                if details.get("sport"):
+                    stats["sports"].add(details["sport"])
+                if details.get("competition"):
+                    stats["competitions"].add(details["competition"])
+
+        source_books = []
+        for stats in grouped.values():
+            source_books.append({
+                "provider_id": stats["provider_id"],
+                "source_book_id": stats["source_book_id"],
+                "source_book_name": stats["source_book_name"],
+                "snapshots_observed": len(stats["snapshot_ids"]),
+                "events_observed": len(stats["event_ids"]),
+                "market_observations": len(stats["market_names"]),
+                "market_names_observed": sorted(stats["market_names"]),
+                "selections_received": stats["selections_received"],
+                "sports_observed": sorted(stats["sports"]),
+                "competitions_observed": sorted(stats["competitions"]),
+                "last_captured_at": stats["last_captured_at"],
+            })
+        source_books.sort(key=lambda item: (
+            item["provider_id"], (item["source_book_name"] or "").casefold(),
+            item["source_book_id"],
+        ))
+        return {
+            "source_books": source_books,
+            "source_book_count": len(source_books),
+            "unattributed_market_observations": unattributed_observations,
+            "note": (
+                "Counts describe stored observations, not a guarantee of complete "
+                "bookmaker market inventory."
+            ),
+        }
