@@ -272,3 +272,113 @@ def test_source_book_coverage_reports_observed_provider_book_inventory(tmp_path)
 def test_source_book_coverage_can_be_filtered_by_provider(tmp_path):
     store = SQLiteMarketStore(tmp_path / "provider-coverage.sqlite3")
     assert store.source_book_coverage_report(provider="missing-feed")["source_book_count"] == 0
+
+
+def test_provider_capability_report_tracks_discovery_scans_and_observed_markets(tmp_path):
+    from datetime import datetime, timezone
+    from app.providers.base import ProviderEvent, ProviderMarket, ProviderSelection
+    from app.services.ingestion import IngestionReport
+    from app.services.market_inventory import EventMarketSnapshot
+
+    database = tmp_path / "capabilities.sqlite3"
+    store = SQLiteMarketStore(database)
+    event = ProviderEvent(
+        provider="capability-feed",
+        source_event_id="event-1",
+        sport="basketball",
+        competition="league-1",
+        name="Home v Away",
+        start_time="2026-11-28T19:00:00+00:00",
+        status="scheduled",
+    )
+    for scan_id, package, market_name, market_state, when in (
+        ("scan-prematch", "prematch", "Moneyline", "active", "2026-11-28T10:00:00+00:00"),
+        ("scan-live", "live", "Live Spread", "live", "2026-11-28T11:00:00+00:00"),
+    ):
+        store.start_scan(scan_id, "capability-feed", "2026-11-28", package, when)
+        store.record_event(event, when)
+        store.record_snapshot(
+            EventMarketSnapshot(
+                provider="capability-feed",
+                source_event_id="event-1",
+                captured_at=datetime.fromisoformat(when),
+                markets=(
+                    ProviderMarket(
+                        provider="capability-feed",
+                        source_event_id="event-1",
+                        source_market_id=f"market-{package}",
+                        name=market_name,
+                        period="full_game",
+                        line=None,
+                        status=market_state,
+                        selections=(
+                            ProviderSelection("home", "Home", 1.8),
+                            ProviderSelection("away", "Away", 2.0),
+                        ),
+                        source_book_id="source-book-1",
+                        source_book_name="Example Book",
+                        classified=package == "prematch",
+                    ),
+                ),
+            ),
+            scan_id,
+        )
+        report = IngestionReport(
+            provider="capability-feed",
+            scan_date="2026-11-28",
+            started_at=datetime.fromisoformat(when),
+        )
+        report.completed_at = datetime.fromisoformat(when)
+        store.finish_scan(scan_id, report)
+
+    store.record_discovery_items(
+        "scan-prematch", "capability-feed", "books", "catalogue", "prematch",
+        [{"id": "source-book-1", "name": "Example Book"}],
+        "2026-11-28T10:00:01+00:00",
+    )
+    store.record_discovery_items(
+        "scan-prematch", "capability-feed", "sports", "catalogue", "prematch",
+        [{"id": "basketball", "name": "Basketball"}],
+        "2026-11-28T10:00:01+00:00",
+    )
+    store.record_discovery_items(
+        "scan-prematch", "capability-feed", "competitions", "basketball", "prematch",
+        [{"id": "league-1", "name": "Example League"}],
+        "2026-11-28T10:00:01+00:00",
+    )
+
+    reopened = SQLiteMarketStore(database)
+    report = reopened.provider_capability_report()
+    provider = report["providers"]["capability-feed"]
+    assert report["provider_count"] == 1
+    assert provider["scan_health"]["scan_count"] == 2
+    assert provider["scan_health"]["complete_scans"] == 2
+    assert provider["packages_observed"] == ["live", "prematch"]
+    assert provider["catalogue_discovery"]["book_entries_discovered"] == 1
+    assert provider["catalogue_discovery"]["sports_discovered"] == ["basketball"]
+    assert provider["catalogue_discovery"]["competitions_discovered"] == ["league-1"]
+    assert provider["observed_activity"]["events_observed"] == 1
+    assert provider["observed_activity"]["bookmakers_with_market_observations"] == 1
+    assert provider["observed_activity"]["market_observations"] == 2
+    assert provider["observed_activity"]["selections_received"] == 4
+    assert provider["observed_activity"]["live_market_observations"] == 1
+    assert provider["observed_activity"]["classified_market_observations"] == 1
+    assert provider["observed_activity"]["unclassified_market_observations"] == 1
+    assert provider["scope_assessment"]["regional_availability"] == "not_established"
+    assert provider["scope_assessment"]["proprietary_game_coverage"] == "not_observed"
+    assert provider["scope_assessment"]["live_markets"] == "observed"
+    assert provider["scope_assessment"]["prematch_package"] == "observed"
+
+
+def test_provider_capability_report_filters_provider_and_returns_empty_for_unknown(tmp_path):
+    store = SQLiteMarketStore(tmp_path / "capabilities-filter.sqlite3")
+    store.start_scan(
+        "scan-a", "feed-a", "2026-11-28", "prematch",
+        "2026-11-28T10:00:00+00:00",
+    )
+    filtered = store.provider_capability_report(provider="feed-a")
+    assert filtered["provider_count"] == 1
+    assert list(filtered["providers"]) == ["feed-a"]
+    missing = store.provider_capability_report(provider="missing-feed")
+    assert missing["provider_count"] == 0
+    assert missing["providers"] == {}

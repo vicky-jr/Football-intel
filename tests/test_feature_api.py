@@ -49,3 +49,27 @@ def test_alert_rule_can_be_disabled_and_mismatched_scope_is_rejected():
  assert mismatch.status_code==422
  disabled=client.post(f"/api/v1/alerts/rules/{rule['rule_id']}/enabled",json={"enabled":False})
  assert disabled.status_code==200 and disabled.json()["enabled"] is False
+
+
+def test_provider_capability_api_exposes_observation_based_scope(monkeypatch):
+ from app import main as main_module
+
+ class FakeStore:
+  def provider_capability_report(self, provider=None):
+   if provider == "known-feed":
+    return {"provider_filter": provider, "provider_count": 1, "providers": {
+     "known-feed": {"provider_id": "known-feed", "scope_assessment": {
+      "regional_availability": "not_established",
+      "proprietary_game_coverage": "not_observed",
+     }},
+    }}
+   return {"provider_filter": provider, "provider_count": 0, "providers": {}}
+
+ monkeypatch.setattr(main_module, "market_store", FakeStore())
+ all_sources = client.get("/api/v1/capabilities")
+ assert all_sources.status_code == 200
+ one_source = client.get("/api/v1/providers/known-feed/capabilities")
+ assert one_source.status_code == 200
+ assert one_source.json()["scope_assessment"]["regional_availability"] == "not_established"
+ missing = client.get("/api/v1/providers/not-seen/capabilities")
+ assert missing.status_code == 404

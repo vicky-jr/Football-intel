@@ -603,3 +603,252 @@ class SQLiteMarketStore:
                 "bookmaker market inventory."
             ),
         }
+
+
+    def provider_capability_report(
+        self, provider: str | None = None
+    ) -> dict[str, Any]:
+        """Report source capabilities evidenced by scans and persisted observations.
+
+        This describes what has actually been discovered or observed. It is not
+        a statement of commercial entitlement, geographic availability or feed
+        completeness.
+        """
+        clauses = []
+        parameters: list[Any] = []
+        if provider:
+            clauses.append("provider = ?")
+            parameters.append(provider)
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+
+        with self._connection() as connection:
+            scan_rows = connection.execute(
+                f"""
+                SELECT provider, package, started_at, completed_at, status
+                FROM scan_runs
+                {where}
+                ORDER BY started_at DESC
+                """,
+                parameters,
+            ).fetchall()
+            discovery_rows = connection.execute(
+                f"""
+                SELECT provider, stage, package, source_id, name, captured_at
+                FROM provider_discovery_items
+                {where}
+                ORDER BY captured_at DESC, id DESC
+                """,
+                parameters,
+            ).fetchall()
+            event_rows = connection.execute(
+                f"""
+                SELECT provider, source_event_id, sport, competition, status, last_seen_at
+                FROM provider_events
+                {where}
+                """,
+                parameters,
+            ).fetchall()
+            market_rows = connection.execute(
+                f"""
+                SELECT ms.provider, ms.source_event_id, ms.captured_at,
+                       ms.markets_json, sr.package
+                FROM market_snapshots AS ms
+                LEFT JOIN scan_runs AS sr ON sr.scan_id = ms.scan_id
+                {" WHERE ms.provider = ?" if provider else ""}
+                ORDER BY ms.captured_at DESC
+                """,
+                (provider,) if provider else [],
+            ).fetchall()
+
+        reports: dict[str, dict[str, Any]] = {}
+
+        def ensure(provider_id: str) -> dict[str, Any]:
+            return reports.setdefault(provider_id, {
+                "scan_packages": set(),
+                "scan_count": 0,
+                "complete_scans": 0,
+                "partial_scans": 0,
+                "last_scan_status": None,
+                "last_scan_started_at": None,
+                "last_scan_completed_at": None,
+                "last_successful_scan_at": None,
+                "discovery_packages": set(),
+                "discovery_ids": {
+                    "books": set(), "sports": set(),
+                    "competitions": set(), "stages": set(),
+                },
+                "discovery_names": {
+                    "books": set(), "sports": set(),
+                    "competitions": set(), "stages": set(),
+                },
+                "event_ids": set(),
+                "event_sports": set(),
+                "event_competitions": set(),
+                "event_statuses": {},
+                "market_packages": set(),
+                "market_event_ids": set(),
+                "market_book_ids": set(),
+                "market_ids": set(),
+                "market_names": set(),
+                "market_states": {},
+                "market_observations": 0,
+                "selections_received": 0,
+                "classified_market_observations": 0,
+                "unclassified_market_observations": 0,
+                "live_market_observations": 0,
+                "last_market_observation_at": None,
+            })
+
+        # Scan health is deliberately separate from observations. A failed scan
+        # must remain visible even when earlier successful data still exists.
+        for row in scan_rows:
+            stats = ensure(row["provider"])
+            stats["scan_count"] += 1
+            if row["package"]:
+                stats["scan_packages"].add(row["package"])
+            if stats["last_scan_started_at"] is None:
+                stats["last_scan_status"] = row["status"]
+                stats["last_scan_started_at"] = row["started_at"]
+                stats["last_scan_completed_at"] = row["completed_at"]
+            if row["status"] == "complete":
+                stats["complete_scans"] += 1
+                if (
+                    stats["last_successful_scan_at"] is None
+                    or (row["completed_at"] or "") > stats["last_successful_scan_at"]
+                ):
+                    stats["last_successful_scan_at"] = row["completed_at"]
+            elif row["status"] == "partial":
+                stats["partial_scans"] += 1
+
+        for row in discovery_rows:
+            stats = ensure(row["provider"])
+            if row["package"]:
+                stats["discovery_packages"].add(row["package"])
+            stage = row["stage"]
+            if stage in stats["discovery_ids"]:
+                if row["source_id"]:
+                    stats["discovery_ids"][stage].add(str(row["source_id"]))
+                if row["name"]:
+                    stats["discovery_names"][stage].add(str(row["name"]))
+
+        for row in event_rows:
+            stats = ensure(row["provider"])
+            stats["event_ids"].add(row["source_event_id"])
+            if row["sport"]:
+                stats["event_sports"].add(row["sport"])
+            if row["competition"]:
+                stats["event_competitions"].add(row["competition"])
+            event_status = row["status"] or "unknown"
+            stats["event_statuses"][event_status] = (
+                stats["event_statuses"].get(event_status, 0) + 1
+            )
+
+        for row in market_rows:
+            stats = ensure(row["provider"])
+            stats["market_event_ids"].add(row["source_event_id"])
+            if row["package"]:
+                stats["market_packages"].add(row["package"])
+            if stats["last_market_observation_at"] is None:
+                stats["last_market_observation_at"] = row["captured_at"]
+            for market in json.loads(row["markets_json"]):
+                stats["market_observations"] += 1
+                if market.get("source_market_id") is not None:
+                    stats["market_ids"].add(str(market["source_market_id"]))
+                if market.get("name"):
+                    stats["market_names"].add(str(market["name"]))
+                if market.get("source_book_id") is not None:
+                    stats["market_book_ids"].add(str(market["source_book_id"]))
+                state = str(market.get("status") or "unknown").casefold()
+                stats["market_states"][state] = (
+                    stats["market_states"].get(state, 0) + 1
+                )
+                if state in {"live", "in_play", "in-play", "inplay"}:
+                    stats["live_market_observations"] += 1
+                if market.get("classified") is True:
+                    stats["classified_market_observations"] += 1
+                else:
+                    stats["unclassified_market_observations"] += 1
+                stats["selections_received"] += len(market.get("selections", []))
+
+        provider_reports: dict[str, dict[str, Any]] = {}
+        for provider_id, stats in sorted(reports.items()):
+            discovered_sports = stats["discovery_ids"]["sports"]
+            observed_sports = stats["event_sports"]
+            sports = discovered_sports | observed_sports
+            discovered_competitions = stats["discovery_ids"]["competitions"]
+            stages = stats["discovery_ids"]["stages"]
+            market_packages = stats["market_packages"]
+            package_evidence = stats["scan_packages"] | stats["discovery_packages"] | market_packages
+            provider_reports[provider_id] = {
+                "provider_id": provider_id,
+                "scan_health": {
+                    "scan_count": stats["scan_count"],
+                    "complete_scans": stats["complete_scans"],
+                    "partial_scans": stats["partial_scans"],
+                    "last_scan_status": stats["last_scan_status"],
+                    "last_scan_started_at": stats["last_scan_started_at"],
+                    "last_scan_completed_at": stats["last_scan_completed_at"],
+                    "last_successful_scan_at": stats["last_successful_scan_at"],
+                },
+                "packages_observed": sorted(package_evidence),
+                "catalogue_discovery": {
+                    "book_entries_discovered": len(stats["discovery_ids"]["books"]),
+                    "book_names_discovered": sorted(stats["discovery_names"]["books"]),
+                    "sports_discovered": sorted(sports),
+                    "sports_discovered_count": len(sports),
+                    "competitions_discovered": sorted(discovered_competitions),
+                    "competition_names_discovered": sorted(
+                        stats["discovery_names"]["competitions"]
+                    ),
+                    "stages_discovered": sorted(stages),
+                    "stage_names_discovered": sorted(stats["discovery_names"]["stages"]),
+                },
+                "observed_activity": {
+                    "events_observed": len(stats["event_ids"]),
+                    "events_with_market_observations": len(stats["market_event_ids"]),
+                    "sports_with_event_observations": sorted(observed_sports),
+                    "competitions_with_event_observations": sorted(
+                        stats["event_competitions"]
+                    ),
+                    "bookmakers_with_market_observations": len(stats["market_book_ids"]),
+                    "source_book_ids_observed": sorted(stats["market_book_ids"]),
+                    "market_observations": stats["market_observations"],
+                    "distinct_source_market_ids": len(stats["market_ids"]),
+                    "distinct_source_market_names": sorted(stats["market_names"]),
+                    "selections_received": stats["selections_received"],
+                    "market_state_observations": dict(sorted(stats["market_states"].items())),
+                    "live_market_observations": stats["live_market_observations"],
+                    "classified_market_observations": stats["classified_market_observations"],
+                    "unclassified_market_observations": stats["unclassified_market_observations"],
+                    "last_market_observation_at": stats["last_market_observation_at"],
+                },
+                "scope_assessment": {
+                    "regional_availability": "not_established",
+                    "proprietary_game_coverage": "not_observed",
+                    "live_markets": (
+                        "observed" if stats["live_market_observations"] > 0
+                        else "not_observed"
+                    ),
+                    "prematch_package": (
+                        "observed" if any("prematch" in str(item).casefold()
+                                          for item in package_evidence)
+                        else "not_observed"
+                    ),
+                    "note": (
+                        "Not observed does not mean unsupported. Directory and feed "
+                        "observations do not establish legal availability, commercial "
+                        "entitlement or complete source coverage."
+                    ),
+                },
+            }
+
+        return {
+            "provider_filter": provider,
+            "provider_count": len(provider_reports),
+            "providers": provider_reports,
+            "evidence_basis": "persisted scan, catalogue, event and market observations",
+            "note": (
+                "This report measures observed capability only. It does not infer "
+                "unseen sports, regions, products, market families or entitlements."
+            ),
+        }

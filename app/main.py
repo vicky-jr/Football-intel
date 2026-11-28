@@ -144,6 +144,21 @@ def discovery_inventory(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@app.get("/api/v1/capabilities")
+def provider_capabilities(provider_id: str | None = None):
+    """Report provider sports, event, package and market capabilities from observations."""
+    return market_store.provider_capability_report(provider=provider_id)
+
+
+@app.get("/api/v1/providers/{provider_id}/capabilities")
+def one_provider_capabilities(provider_id: str):
+    """Return observed capabilities for one provider; unknown providers return 404."""
+    report = market_store.provider_capability_report(provider=provider_id)
+    if not report["providers"]:
+        raise HTTPException(status_code=404, detail="No observations recorded for this provider")
+    return report["providers"][provider_id]
+
+
 @app.get("/api/v1/coverage")
 def coverage():
     """Return persisted market-observation coverage by provider."""

@@ -88,3 +88,24 @@ An optional `provider_id` query parameter narrows suggestions to one source feed
   sports, competitions and the last captured time.
 - An observation count is not proof that every market offered by a bookmaker was
   enumerated. Completeness requires a separate feed-level completeness check.
+
+
+## Observed provider capability matrix
+
+The capability report is generated from stored scan, catalogue, event and market
+observations. It is not an entitlement declaration and does not guess what a provider
+could supply but has not yet returned.
+
+- `GET /api/v1/capabilities`: compare all providers with recorded observations.
+- `GET /api/v1/capabilities?provider_id=sportradar-prematch`: filter to one provider.
+- `GET /api/v1/providers/{provider_id}/capabilities`: inspect a single provider.
+
+The report separates scan health, catalogue discovery and observed activity. It shows
+sports and competitions, discovered bookmaker catalogue entries, market packages,
+source market labels, selection counts, live market states and freshness timestamps.
+It explicitly reports regional availability as `not_established` until a separate
+evidence-backed regional-access workflow exists, and proprietary-game coverage as
+`not_observed` until game feeds are ingested.
+
+A missing observation means `not_observed`, not `unsupported`. A successful scan
+does not establish that the provider exposed every market it offers.

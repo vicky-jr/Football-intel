@@ -114,6 +114,7 @@ are optional; use IDs returned by the discovery feed rather than guessing them.
 ## API groups
 
 - `/api/v1/coverage`, `/api/v1/scans`: ingestion coverage and scan history.
+- `/api/v1/capabilities`, `/api/v1/providers/{provider_id}/capabilities`: observed source capability and scope reports.
 - `/api/v1/discovery/inventory`: raw Books, Sports and Competition discovery catalogue.
 - `/api/v1/integrations/sportradar/status`: local credential configuration status (no provider call).
 - `/api/v1/taxonomy/definitions`: canonical market definitions.
@@ -136,8 +137,8 @@ No bookmaker feed or live result provider is currently verified. The Sportradar 
 responses, but it has not yet completed a live authenticated scan. Account entitlements,
 the X-Origin-Id access tier, regional bookmaker coverage, terms, storage rights and
 redistribution rights must be confirmed before it is described as a live integrated source.
-The current event adapter handles competition-based sports; stage-based sports are
-reported as coverage warnings until their stage-specific schedule workflow is implemented.
+The current Sportradar Prematch adapter handles competition-based and stage-based
+schedule discovery. Live odds, player-props and futures packages are not yet implemented.
 
 The API is an engineering MVP and is not production-secure for public multi-user use.
 Before deployment it needs authentication, role-based access control, tenant isolation,
