@@ -314,3 +314,133 @@ def test_suggested_identity_endpoint_reads_provider_books_without_auto_linking(m
         "exact_name_candidate": 1, "unmatched": 1,
     }
     assert directory.list_source_links() == []
+
+
+
+def test_sqlite_audit_log_records_operator_and_source_link_decisions(tmp_path):
+    import sqlite3
+
+    database = tmp_path / "bookmaker-audit.sqlite3"
+    directory = BookmakerDirectory(database_path=database)
+    directory.update(
+        BookmakerProfile(
+            operator_id="1xbet",
+            display_name="1xBet",
+            integration_status="access_review",
+            verification_status="partially_verified",
+            notes="Access review is underway.",
+            access_method="official_api",
+            terms_review_status="in_review",
+            evidence_url="https://evidence.example/operator?access_token=not-for-audit",
+            last_checked_at="2026-11-28T12:00:00Z",
+        ),
+        actor_id="reviewer-17",
+        reason="Started documented access and terms review",
+    )
+    directory.add_source_link(
+        "1xbet", "feed-a", "book-77", "1X Bet",
+        actor_id="reviewer-17",
+        reason="Feed catalogue identity requires review",
+    )
+    directory.set_source_link_status(
+        "1xbet", "feed-a", "book-77", "verified",
+        evidence_url="https://evidence.example/match?token=private",
+        last_checked_at="2026-11-28T12:30:00Z",
+        notes="Matched using official operator evidence.",
+        actor_id="reviewer-18",
+        reason="Official operator evidence confirmed this provider identity",
+    )
+
+    history = directory.audit_history(limit=10)
+    assert [item["action"] for item in history[:3]] == [
+        "source_link.verified", "source_link.created", "operator.updated"
+    ]
+    verification = history[0]
+    assert verification["actor_id"] == "reviewer-18"
+    assert verification["before"]["verification_status"] == "candidate"
+    assert verification["after"]["verification_status"] == "verified"
+    assert verification["evidence_url"] == "https://evidence.example/match"
+    assert "private" not in verification["evidence_url"]
+    assert history[2]["after"]["verification_status"] == "partially_verified"
+    assert history[2]["evidence_url"] == "https://evidence.example/operator"
+
+    filtered = directory.audit_history(
+        entity_type="source_link",
+        entity_id="1xbet:feed-a:book-77",
+    )
+    assert len(filtered) == 2
+    integrity = directory.audit_integrity_report()
+    assert integrity["verified"] is True
+    assert integrity["entry_count"] == 3
+
+
+def test_sqlite_audit_log_is_append_only_and_detects_hash_chain_tampering(tmp_path):
+    import sqlite3
+
+    database = tmp_path / "bookmaker-audit-immutable.sqlite3"
+    directory = BookmakerDirectory(database_path=database)
+    directory.add_source_link(
+        "bet365", "feed-a", "source-1", "bet365",
+        actor_id="reviewer-1",
+    )
+    event = directory.audit_history(limit=1)[0]
+
+    connection = sqlite3.connect(database)
+    try:
+        try:
+            connection.execute(
+                "UPDATE bookmaker_audit_log SET reason = ? WHERE audit_id = ?",
+                ("rewritten", event["audit_id"]),
+            )
+            connection.commit()
+        except sqlite3.DatabaseError as exc:
+            assert "append-only" in str(exc)
+            connection.rollback()
+        else:
+            raise AssertionError("audit log updates must be rejected")
+        try:
+            connection.execute(
+                "DELETE FROM bookmaker_audit_log WHERE audit_id = ?",
+                (event["audit_id"],),
+            )
+            connection.commit()
+        except sqlite3.DatabaseError as exc:
+            assert "append-only" in str(exc)
+            connection.rollback()
+        else:
+            raise AssertionError("audit log deletes must be rejected")
+    finally:
+        connection.close()
+
+    assert directory.audit_integrity_report()["verified"] is True
+
+
+def test_failed_source_verification_does_not_create_a_verification_audit_event(tmp_path):
+    directory = BookmakerDirectory(database_path=tmp_path / "audit-validation.sqlite3")
+    directory.add_source_link(
+        "sportybet", "feed-a", "source-42", "SportyBet",
+        actor_id="reviewer-1",
+    )
+    before = len(directory.audit_history())
+    try:
+        directory.set_source_link_status(
+            "sportybet", "feed-a", "source-42", "verified",
+            evidence_url="not-a-valid-url",
+            last_checked_at="2026-11-28T12:00:00Z",
+            actor_id="reviewer-2",
+        )
+    except ValueError as exc:
+        assert "HTTP(S) URL" in str(exc)
+    else:
+        raise AssertionError("invalid verification evidence must be rejected")
+    assert len(directory.audit_history()) == before
+
+
+def test_audit_history_requires_persistent_storage_and_valid_limits():
+    import pytest
+
+    with pytest.raises(RuntimeError):
+        BookmakerDirectory().audit_history()
+    directory = BookmakerDirectory(database_path=":memory:")
+    with pytest.raises(RuntimeError):
+        directory.audit_integrity_report()

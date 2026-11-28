@@ -31,8 +31,26 @@ filled with assumptions.
 - `GET /api/v1/bookmakers/{operator_id}/sources`: inspect data-provider identities for an operator.
 
 The HTTP API is read-only. Status changes and source-identity verification are not
-exposed as unauthenticated public writes. A future authenticated administrative
-workflow must record who changed a status, when, and which evidence justified it.
+exposed as unauthenticated public writes. Persistent SQLite-backed administrative
+mutations now append an audit event with an actor identifier, timestamp, action,
+changed fields, reason and (when supplied) an evidence URL. Operator registration
+and updates, source-link creation, and source-link verification/rejection are
+recorded. Bootstrap seed insertion is treated as baseline initialization rather
+than an operator review decision.
+
+The audit table has SQLite update/delete guards and a SHA-256 hash chain. Use
+`BookmakerDirectory.audit_history()` to inspect events and
+`BookmakerDirectory.audit_integrity_report()` to verify the chain. Evidence URLs
+are stored without query strings or fragments to avoid retaining URL-borne tokens.
+This is application-level tamper evidence, not an externally anchored immutable
+WORM service; a privileged database owner can still replace the database or schema.
+
+Actor identifiers default to `system:unspecified` for backwards-compatible internal
+calls. A production administrative workflow must derive `actor_id` from the
+authenticated server-side identity, never trust a caller-supplied actor string, and
+must add role-based authorisation before exposing audit records or mutation actions.
+The audit history is not exposed through the public HTTP API while authentication
+and tenant controls remain incomplete.
 
 ## Important definitions
 

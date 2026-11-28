@@ -165,5 +165,7 @@ operators and authorised data sources are researched.
 
 
 The bookmaker directory is persisted in the configured SQLite database and exposes
-search, region filters and verification summaries. Status changes are not exposed
-as unauthenticated public writes. See [the persistent directory design](docs/global-bookmaker-directory.md).
+search, region filters and verification summaries. Trusted internal mutations now
+write append-only, hash-chained audit events for operator and source-identity review
+decisions; public write and audit-read routes remain disabled until authentication
+and role-based access control exist. See [the persistent directory design](docs/global-bookmaker-directory.md).

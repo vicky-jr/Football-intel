@@ -5,12 +5,16 @@ availability. The optional SQLite backing store preserves operator research,
 source-identity links and verification states across application restarts.
 """
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+import hashlib
 import json
 import re
 import sqlite3
 import unicodedata
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
+from urllib.parse import urlsplit, urlunsplit
+from uuid import uuid4
 
 
 @dataclass(frozen=True)
@@ -220,6 +224,239 @@ class BookmakerDirectory:
                 "CREATE INDEX IF NOT EXISTS idx_bookmaker_source_provider "
                 "ON bookmaker_source_links(provider_id, source_book_id)"
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS bookmaker_audit_log (
+                    sequence_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    audit_id TEXT NOT NULL UNIQUE,
+                    recorded_at TEXT NOT NULL,
+                    actor_id TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    entity_type TEXT NOT NULL,
+                    entity_id TEXT NOT NULL,
+                    before_json TEXT,
+                    after_json TEXT,
+                    evidence_url TEXT,
+                    reason TEXT NOT NULL,
+                    previous_hash TEXT NOT NULL,
+                    entry_hash TEXT NOT NULL UNIQUE
+                )
+                """
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_bookmaker_audit_entity "
+                "ON bookmaker_audit_log(entity_type, entity_id, sequence_id)"
+            )
+            connection.execute(
+                """
+                CREATE TRIGGER IF NOT EXISTS bookmaker_audit_no_update
+                BEFORE UPDATE ON bookmaker_audit_log
+                BEGIN
+                    SELECT RAISE(ABORT, 'bookmaker audit log is append-only');
+                END
+                """
+            )
+            connection.execute(
+                """
+                CREATE TRIGGER IF NOT EXISTS bookmaker_audit_no_delete
+                BEFORE DELETE ON bookmaker_audit_log
+                BEGIN
+                    SELECT RAISE(ABORT, 'bookmaker audit log is append-only');
+                END
+                """
+            )
+
+
+    @staticmethod
+    def _audit_json(value: Any) -> str:
+        return json.dumps(
+            value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
+
+    @staticmethod
+    def _audit_actor(actor_id: str) -> str:
+        actor = str(actor_id).strip()
+        if not actor or len(actor) > 128:
+            raise ValueError("actor_id must contain between 1 and 128 characters")
+        return actor
+
+    @staticmethod
+    def _safe_evidence_url(value: str | None) -> str | None:
+        """Keep an evidence location while dropping query strings and credentials."""
+        if not value:
+            return None
+        try:
+            parsed = urlsplit(value.strip())
+            hostname = parsed.hostname
+            if parsed.scheme.casefold() not in {"http", "https"} or not hostname:
+                return None
+            port = parsed.port
+            netloc = hostname if port is None else f"{hostname}:{port}"
+            return urlunsplit((parsed.scheme.casefold(), netloc, parsed.path, "", ""))
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _audit_digest(payload: dict[str, Any]) -> str:
+        serialized = json.dumps(
+            payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
+        return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+    def _append_audit_event(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        action: str,
+        entity_type: str,
+        entity_id: str,
+        actor_id: str,
+        reason: str,
+        before: dict[str, Any] | None,
+        after: dict[str, Any] | None,
+        evidence_url: str | None = None,
+    ) -> None:
+        actor = self._audit_actor(actor_id)
+        explanation = str(reason).strip()
+        if len(explanation) > 1000:
+            raise ValueError("audit reason must not exceed 1000 characters")
+        previous = connection.execute(
+            "SELECT entry_hash FROM bookmaker_audit_log "
+            "ORDER BY sequence_id DESC LIMIT 1"
+        ).fetchone()
+        previous_hash = previous["entry_hash"] if previous else "0" * 64
+        recorded_at = datetime.now(timezone.utc).isoformat()
+        audit_id = str(uuid4())
+        safe_url = self._safe_evidence_url(evidence_url)
+        payload = {
+            "audit_id": audit_id,
+            "recorded_at": recorded_at,
+            "actor_id": actor,
+            "action": action,
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "before": before,
+            "after": after,
+            "evidence_url": safe_url,
+            "reason": explanation or "No reason supplied",
+            "previous_hash": previous_hash,
+        }
+        entry_hash = self._audit_digest(payload)
+        connection.execute(
+            """
+            INSERT INTO bookmaker_audit_log (
+                audit_id, recorded_at, actor_id, action, entity_type, entity_id,
+                before_json, after_json, evidence_url, reason, previous_hash, entry_hash
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                audit_id, recorded_at, actor, action, entity_type, entity_id,
+                self._audit_json(before) if before is not None else None,
+                self._audit_json(after) if after is not None else None,
+                safe_url, payload["reason"], previous_hash, entry_hash,
+            ),
+        )
+
+    def audit_history(
+        self,
+        *,
+        entity_type: str | None = None,
+        entity_id: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Return persisted audit events newest first; requires SQLite storage."""
+        if self.database_path is None:
+            raise RuntimeError("audit history requires persistent SQLite storage")
+        if not 1 <= limit <= 1000:
+            raise ValueError("limit must be between 1 and 1000")
+        clauses = []
+        parameters: list[Any] = []
+        if entity_type:
+            clauses.append("entity_type = ?")
+            parameters.append(entity_type)
+        if entity_id:
+            clauses.append("entity_id = ?")
+            parameters.append(entity_id)
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        parameters.append(limit)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT audit_id, recorded_at, actor_id, action, entity_type,
+                       entity_id, before_json, after_json, evidence_url, reason,
+                       previous_hash, entry_hash
+                FROM bookmaker_audit_log
+                {where}
+                ORDER BY sequence_id DESC
+                LIMIT ?
+                """,
+                parameters,
+            ).fetchall()
+        return [
+            {
+                "audit_id": row["audit_id"],
+                "recorded_at": row["recorded_at"],
+                "actor_id": row["actor_id"],
+                "action": row["action"],
+                "entity_type": row["entity_type"],
+                "entity_id": row["entity_id"],
+                "before": json.loads(row["before_json"]) if row["before_json"] else None,
+                "after": json.loads(row["after_json"]) if row["after_json"] else None,
+                "evidence_url": row["evidence_url"],
+                "reason": row["reason"],
+                "previous_hash": row["previous_hash"],
+                "entry_hash": row["entry_hash"],
+            }
+            for row in rows
+        ]
+
+    def audit_integrity_report(self) -> dict[str, Any]:
+        """Check the complete SHA-256 chain for accidental or unauthorised edits."""
+        if self.database_path is None:
+            raise RuntimeError("audit integrity requires persistent SQLite storage")
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT audit_id, recorded_at, actor_id, action, entity_type, entity_id,
+                       before_json, after_json, evidence_url, reason, previous_hash,
+                       entry_hash
+                FROM bookmaker_audit_log
+                ORDER BY sequence_id ASC
+                """
+            ).fetchall()
+        previous_hash = "0" * 64
+        broken_audit_id = None
+        for row in rows:
+            before = json.loads(row["before_json"]) if row["before_json"] else None
+            after = json.loads(row["after_json"]) if row["after_json"] else None
+            payload = {
+                "audit_id": row["audit_id"],
+                "recorded_at": row["recorded_at"],
+                "actor_id": row["actor_id"],
+                "action": row["action"],
+                "entity_type": row["entity_type"],
+                "entity_id": row["entity_id"],
+                "before": before,
+                "after": after,
+                "evidence_url": row["evidence_url"],
+                "reason": row["reason"],
+                "previous_hash": row["previous_hash"],
+            }
+            expected_hash = self._audit_digest(payload)
+            if row["previous_hash"] != previous_hash or row["entry_hash"] != expected_hash:
+                broken_audit_id = row["audit_id"]
+                break
+            previous_hash = row["entry_hash"]
+        return {
+            "verified": broken_audit_id is None,
+            "entry_count": len(rows),
+            "first_broken_audit_id": broken_audit_id,
+            "latest_entry_hash": previous_hash if rows and broken_audit_id is None else None,
+            "integrity_scope": (
+                "application-level append-only SQLite triggers and an ordered hash chain; "
+                "not an externally anchored immutable or WORM audit service"
+            ),
+        }
 
     @staticmethod
     def _columns(profile: BookmakerProfile) -> tuple:
@@ -278,8 +515,15 @@ class BookmakerDirectory:
                 self._columns(normalized),
             )
 
-    def register(self, profile: BookmakerProfile) -> None:
+    def register(
+        self,
+        profile: BookmakerProfile,
+        *,
+        actor_id: str = "system:unspecified",
+        reason: str = "Operator added to discovery directory",
+    ) -> None:
         normalized = self._normalize(profile)
+        actor = self._audit_actor(actor_id)
         if self.database_path is None:
             if normalized.operator_id in self._profiles:
                 raise ValueError(f"bookmaker already registered: {normalized.operator_id}")
@@ -298,14 +542,32 @@ class BookmakerDirectory:
                     """,
                     self._columns(normalized),
                 )
+                self._append_audit_event(
+                    connection,
+                    action="operator.registered",
+                    entity_type="operator",
+                    entity_id=normalized.operator_id,
+                    actor_id=actor,
+                    reason=reason,
+                    before=None,
+                    after=asdict(normalized),
+                    evidence_url=normalized.evidence_url,
+                )
         except sqlite3.IntegrityError as exc:
             raise ValueError(
                 f"bookmaker already registered: {normalized.operator_id}"
             ) from exc
 
-    def update(self, profile: BookmakerProfile) -> None:
-        """Update an existing operator record; intended for trusted admin workflows."""
+    def update(
+        self,
+        profile: BookmakerProfile,
+        *,
+        actor_id: str = "system:unspecified",
+        reason: str = "Operator record reviewed",
+    ) -> None:
+        """Update an operator record and preserve the changed fields in the audit log."""
         normalized = self._normalize(profile)
+        actor = self._audit_actor(actor_id)
         if self.database_path is None:
             if normalized.operator_id not in self._profiles:
                 raise KeyError(
@@ -314,7 +576,24 @@ class BookmakerDirectory:
             self._profiles[normalized.operator_id] = normalized
             return
         with self._connect() as connection:
-            cursor = connection.execute(
+            row = connection.execute(
+                "SELECT * FROM bookmaker_directory WHERE operator_id = ?",
+                (normalized.operator_id,),
+            ).fetchone()
+            if row is None:
+                raise KeyError(
+                    f"bookmaker is not in the discovery directory: {normalized.operator_id}"
+                )
+            previous = asdict(self._from_row(row))
+            updated = asdict(normalized)
+            changed_before = {
+                key: value for key, value in previous.items()
+                if value != updated[key]
+            }
+            changed_after = {
+                key: updated[key] for key in changed_before
+            }
+            connection.execute(
                 """
                 UPDATE bookmaker_directory SET
                     display_name = ?, aliases_json = ?, integration_status = ?,
@@ -334,9 +613,17 @@ class BookmakerDirectory:
                     normalized.operator_id,
                 ),
             )
-            if cursor.rowcount == 0:
-                raise KeyError(
-                    f"bookmaker is not in the discovery directory: {normalized.operator_id}"
+            if changed_before:
+                self._append_audit_event(
+                    connection,
+                    action="operator.updated",
+                    entity_type="operator",
+                    entity_id=normalized.operator_id,
+                    actor_id=actor,
+                    reason=reason,
+                    before=changed_before,
+                    after=changed_after,
+                    evidence_url=normalized.evidence_url,
                 )
 
     def _all_profiles(self) -> list[BookmakerProfile]:
@@ -424,14 +711,18 @@ class BookmakerDirectory:
         source_book_id: str,
         source_book_name: str,
         notes: str = "Candidate name/ID association; not yet verified.",
+        *,
+        actor_id: str = "system:unspecified",
+        reason: str = "Provider-native source identity discovered",
     ) -> None:
-        """Record a candidate source identity without asserting equivalence."""
+        """Record a candidate source identity and preserve its provenance event."""
         operator = operator_id.strip().lower()
         provider = provider_id.strip().lower()
         source_id = source_book_id.strip()
         source_name = source_book_name.strip()
         if not provider or not source_id or not source_name:
             raise ValueError("provider_id, source_book_id and source_book_name are required")
+        actor = self._audit_actor(actor_id)
         self.get(operator)
         link = BookmakerSourceLink(
             operator_id=operator,
@@ -461,6 +752,16 @@ class BookmakerDirectory:
                         link.evidence_url, link.last_checked_at, link.notes,
                     ),
                 )
+                self._append_audit_event(
+                    connection,
+                    action="source_link.created",
+                    entity_type="source_link",
+                    entity_id=f"{operator}:{provider}:{source_id}",
+                    actor_id=actor,
+                    reason=reason,
+                    before=None,
+                    after=asdict(link),
+                )
         except sqlite3.IntegrityError as exc:
             raise ValueError("source identity link already exists") from exc
 
@@ -473,10 +774,14 @@ class BookmakerDirectory:
         evidence_url: str | None = None,
         last_checked_at: str | None = None,
         notes: str | None = None,
+        *,
+        actor_id: str = "system:unspecified",
+        reason: str = "Source identity review state changed",
     ) -> None:
-        """Change a source identity link's review state in a trusted workflow."""
+        """Change a source-link review state and audit the decision with evidence."""
         if verification_status not in _SOURCE_LINK_STATES:
             raise ValueError("unsupported source-link verification_status")
+        actor = self._audit_actor(actor_id)
         operator = operator_id.strip().lower()
         provider = provider_id.strip().lower()
         source_id = source_book_id.strip()
@@ -507,7 +812,24 @@ class BookmakerDirectory:
             )
             return
         with self._connect() as connection:
-            cursor = connection.execute(
+            existing = connection.execute(
+                """
+                SELECT * FROM bookmaker_source_links
+                WHERE operator_id = ? AND provider_id = ? AND source_book_id = ?
+                """,
+                (operator, provider, source_id),
+            ).fetchone()
+            if existing is None:
+                raise KeyError("source identity link was not found")
+            previous = asdict(self._source_link_from_row(existing))
+            updated = {
+                **previous,
+                "verification_status": verification_status,
+                "evidence_url": evidence or previous["evidence_url"],
+                "last_checked_at": checked or previous["last_checked_at"],
+                "notes": notes.strip() if notes is not None else previous["notes"],
+            }
+            connection.execute(
                 """
                 UPDATE bookmaker_source_links SET
                     verification_status = ?,
@@ -523,8 +845,25 @@ class BookmakerDirectory:
                     operator, provider, source_id,
                 ),
             )
-            if cursor.rowcount == 0:
-                raise KeyError("source identity link was not found")
+            changed_before = {
+                key: value for key, value in previous.items()
+                if value != updated[key]
+            }
+            changed_after = {
+                key: updated[key] for key in changed_before
+            }
+            if changed_before:
+                self._append_audit_event(
+                    connection,
+                    action=f"source_link.{verification_status}",
+                    entity_type="source_link",
+                    entity_id=f"{operator}:{provider}:{source_id}",
+                    actor_id=actor,
+                    reason=reason,
+                    before=changed_before,
+                    after=changed_after,
+                    evidence_url=updated["evidence_url"],
+                )
 
     def list_source_links(self, operator_id: str | None = None) -> list[dict]:
         """Return source-native bookmaker identities; candidate links remain unverified."""
