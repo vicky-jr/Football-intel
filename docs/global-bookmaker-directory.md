@@ -1,52 +1,52 @@
-# Global bookmaker directory and verification states
+# Persistent global bookmaker directory
 
-## Why this exists
+## Purpose
 
-The platform must be able to track bookmakers across countries and regions without
-confusing a name in a directory with a working data integration. The directory is a
-discovery index; it is not a claim that every listed operator is legally available,
-licensed for the user, or accessible through an authorised API.
+The directory is the platform's operator discovery ledger. It distinguishes the
+existence of a bookmaker or brand from data access, permission to collect data,
+regional availability and verified market coverage.
 
-## Status model
+## Persistence
 
-Each operator has independent integration and verification states:
+The directory is backed by the same SQLite database path selected by
+`FOOTBALL_INTEL_DB_PATH`. In local development, it defaults to
+`data/football_intel.sqlite3`. Initial seed entries are inserted only when absent.
+An operator's manually reviewed status is therefore not overwritten by default
+seed data when the service restarts.
 
-- `not_connected`: discovery candidate only; no working connection is configured.
-- `access_review`: terms, data rights, geography or commercial entitlement are being reviewed.
-- `authorised`: an allowed access route has been established, but ingestion is not yet verified.
-- `connected`: credentials/configuration exist and a connection can be made.
-- `ingestion_verified`: live authorised data has been collected and checked.
-- `temporarily_unavailable`: a previously working source is currently failing or unavailable.
-- `disabled`: deliberately not used.
-
-Verification is separately recorded as `not_verified`, `partially_verified`,
-`verified` or `rejected`. A live connection does not automatically mean complete
-coverage of every sport, event, market, country or product offered by an operator.
+Each record can retain aliases, parent group, official website, permitted access
+method, supported region codes, terms-review status, verification evidence URL,
+last checked time and operator notes. Unknown fields stay empty rather than being
+filled with assumptions.
 
 ## API
 
-- `GET /api/v1/bookmakers`: list discovery candidates.
-- `GET /api/v1/bookmakers?q=bet`: search display names, IDs and aliases.
-- `GET /api/v1/bookmakers?integration_status=not_connected`: filter by state.
-- `GET /api/v1/bookmakers/{operator_id}`: inspect one operator.
+- `GET /api/v1/bookmakers`: list candidates.
+- `GET /api/v1/bookmakers?q=bet`: search name, ID and aliases.
+- `GET /api/v1/bookmakers?region=GB`: list only entries with a recorded GB scope.
+- `GET /api/v1/bookmakers?integration_status=ingestion_verified`: filter integration state.
+- `GET /api/v1/bookmakers?verification_status=verified`: filter evidence state.
+- `GET /api/v1/bookmakers/summary`: directory and verification totals.
+- `GET /api/v1/bookmakers/{operator_id}`: inspect an operator.
 
-The initial directory is a deliberately small seed list and must grow through
-research and authorised integrations. It is not a definitive list of all bookmakers
-worldwide. Region lists remain empty until evidence establishes the relevant market
-and permitted coverage. Never infer a user's legal eligibility from this directory.
+The HTTP API is read-only. Status changes are deliberately not exposed as
+unauthenticated public writes. A future authenticated administrative workflow
+must record who changed a status, when, and which evidence justified it.
 
-## Expansion rules
+## Important definitions
 
-1. Give each legal operator/brand a stable internal ID; model parent groups and brands
-   separately when evidence warrants it.
-2. Store source-specific IDs and regional product variants without collapsing them.
-3. Record official access route, terms/data-rights review, jurisdiction, evidence URL,
-   last checked time and integration owner before enabling ingestion.
-4. Mark `ingestion_verified` only after live authorised responses are validated.
-5. Measure coverage separately by operator, jurisdiction, sport, competition, event,
-   market family, selection, prematch/live mode and freshness.
-6. Keep unsupported, blocked, stale, unknown and untested states explicit.
-7. Never bypass authentication, geographic restrictions, bot controls or provider terms.
+- `connected` means a connection is configured and can be attempted; it does not
+  prove that a useful schedule or market feed has been received.
+- `ingestion_verified` requires successful live authorised data retrieval and
+  validation. It does not mean every sport, event, market or region is covered.
+- `verified` means the stated record is supported by evidence. It must not be
+  interpreted as a licence, legal opinion or global availability guarantee.
+- Region codes are recorded only after evidence review. An empty region list means
+  unknown/not established, not unavailable everywhere.
 
-The goal is worldwide extensibility and honest measurement—not an unsupported claim
-of universal access.
+## Next layer
+
+The next step is a source entitlement and capability matrix: each data feed should
+declare what sports, regions, event types, market families, game products and
+prematch/live packages it actually returns. Coverage must be measured at that
+granularity instead of inherited from the bookmaker's name.

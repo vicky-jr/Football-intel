@@ -160,3 +160,8 @@ tracked for discovery. Directory presence is **not** proof of an integration, da
 licence, geographic availability or live market coverage. Each entry reports its
 current integration state separately. The directory is designed to expand as new
 operators and authorised data sources are researched.
+
+
+The bookmaker directory is persisted in the configured SQLite database and exposes
+search, region filters and verification summaries. Status changes are not exposed
+as unauthenticated public writes. See [the persistent directory design](docs/global-bookmaker-directory.md).
