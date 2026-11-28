@@ -130,6 +130,20 @@ def list_market_alert_rules(owner_id: str):
     return {"rules": alert_store.list_rules(owner_id)}
 
 
+@router.post("/alerts/rules/{rule_id}/enabled")
+def set_market_alert_rule_enabled(rule_id: str, payload: dict[str, Any]):
+    try:
+        enabled = payload["enabled"]
+        if not isinstance(enabled, bool):
+            raise ValueError("enabled must be a boolean")
+        alert_store.set_enabled(rule_id, enabled)
+        return {"rule_id": rule_id, "enabled": enabled}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (TypeError, ValueError) as exc:
+        raise _bad_request(ValueError(str(exc))) from exc
+
+
 @router.post("/alerts/rules/{rule_id}/evaluate")
 def evaluate_persisted_alert_rule(rule_id: str, payload: dict[str, Any]):
     try:
