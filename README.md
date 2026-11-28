@@ -47,6 +47,11 @@ to predict the next independent outcome.
 - **Bet-slip intelligence:** includes an optional Tesseract/Pillow screenshot OCR endpoint and
   a text parser that preserves unparsed lines. It requires the Tesseract system executable;
   images are processed in memory and not retained by the endpoint.
+- **Cross-bookmaker bet-slip portability foundation:** canonical legs can be checked against
+  destination offers using exact event, market, selection, period and line identity, plus
+  event verification, market mapping, settlement comparability, market-open and freshness
+  gates. The endpoint returns a portability plan only; bookmaker-specific booking-code
+  decoding/encoding and live destination validation are not implemented yet.
 - **Responsible-gambling controls:** configured single-stake, daily-stake, exposure,
   daily-loss, self-exclusion and cooling-off checks, plus a user-entered risk ledger.
   The ledger is not connected to bookmaker accounts.
@@ -125,6 +130,7 @@ are optional; use IDs returned by the discovery feed rather than guessing them.
 - `/api/v1/models/backtest`: chronological forecast evaluation.
 - `/api/v1/alerts`: persistent price alert rules, cooldown evaluation, enable/disable and alert history.
 - `/api/v1/bet-slips/ocr`, `/api/v1/bet-slips/reconstruct`: screenshot OCR and supplied-text reconstruction.
+- `/api/v1/bet-slips/portability-check`: canonical cross-bookmaker leg mapping with event, market, settlement and freshness gates. Proprietary booking-code decoding/encoding and live destination validation are not yet connected.
 - `/api/v1/risk`: configured risk checks and user-entered records.
 - `/api/v1/games`: proprietary-game descriptive research.
 - `/api/v1/bookmakers/behaviour`: observable behaviour summaries.

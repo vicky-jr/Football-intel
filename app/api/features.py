@@ -17,6 +17,7 @@ from app.services.settlement_store import PersistentSettlementRuleRegistry
 from app.services.analyst_workspace import AnalystWorkspaceStore
 from app.services.backtesting import chronological_split, evaluate_forecasts
 from app.services.bet_slip import reconstruct_bet_slip
+from app.services.bet_slip_portability import plan_bookmaker_portability
 from app.services.ocr import TesseractBetSlipOCR
 from app.services.bookmaker_intelligence import summarize_bookmaker_behaviour
 from app.services.confidence import assess_evidence_confidence
@@ -52,6 +53,7 @@ def feature_catalogue():
             "chronological backtesting and calibration metrics",
             "persisted threshold alert rules, cooldowns and alert history",
             "optional Tesseract screenshot OCR and OCR-text bet-slip reconstruction",
+            "canonical bet-slip portability planning with event, market, settlement and freshness gates",
             "persistent versioned settlement-rule profiles",
             "responsible-gambling exposure checks and user-entered risk ledger",
             "proprietary-game descriptive research and seed commitment check",
@@ -66,6 +68,7 @@ def feature_catalogue():
             "deployed specialist models or LLM agents",
             "notification delivery and persisted alert preferences",
             "user authentication and tenant isolation",
+            "bookmaker-specific booking-code decoding/encoding and live destination validation",
         ],
     }
 
@@ -218,6 +221,21 @@ def bet_slip_reconstruction(payload: dict[str, Any]):
             stake=float(payload["stake"]) if payload.get("stake") is not None else None,
         )
     except (KeyError, ValueError) as exc:
+        raise _bad_request(ValueError(str(exc))) from exc
+
+
+@router.post("/bet-slips/portability-check")
+def bet_slip_portability_check(payload: dict[str, Any]):
+    """Plan canonical leg portability; does not decode or generate bookmaker codes."""
+    try:
+        return plan_bookmaker_portability(
+            source_bookmaker_id=payload["source_bookmaker_id"],
+            destination_bookmaker_id=payload["destination_bookmaker_id"],
+            source_legs=payload["source_legs"],
+            destination_offers=payload.get("destination_offers", []),
+            stake=payload.get("stake"),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
         raise _bad_request(ValueError(str(exc))) from exc
 
 

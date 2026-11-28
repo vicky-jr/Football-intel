@@ -74,6 +74,22 @@ def test_provider_capability_api_exposes_observation_based_scope(monkeypatch):
  missing = client.get("/api/v1/providers/not-seen/capabilities")
  assert missing.status_code == 404
 
+def test_bet_slip_portability_api_is_explicit_about_code_generation():
+ leg={"canonical_event_id":"event-1","sport":"football","canonical_market_id":"match_result",
+ "selection_key":"home","market_period":"full_time","line":None}
+ offer={**leg,"bookmaker_id":"book-b","destination_market_id":"market-1",
+ "destination_selection_id":"home","odds_decimal":1.9,"market_status":"open",
+ "event_identity_status":"verified","market_mapping_status":"verified",
+ "settlement_status":"comparable","freshness_status":"fresh","captured_at":"2026-11-28T12:00:00Z"}
+ r=client.post("/api/v1/bet-slips/portability-check",json={"source_bookmaker_id":"book-a",
+ "destination_bookmaker_id":"book-b","source_legs":[leg],"destination_offers":[offer],"stake":100})
+ assert r.status_code==200 and r.json()["status"]=="mapped_pending_booking"
+ assert r.json()["booking_code_generation"]["status"]=="not_available"
+ invalid=client.post("/api/v1/bet-slips/portability-check",json={"source_bookmaker_id":"a",
+ "destination_bookmaker_id":"b","source_legs":[]})
+ assert invalid.status_code==422
+
+
 def test_provider_health_api_reports_observed_health_and_unknown_provider(monkeypatch):
  from app import main as main_module
 
