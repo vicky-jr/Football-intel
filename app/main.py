@@ -1,23 +1,50 @@
 """FastAPI application for Football Intel."""
-from fastapi import FastAPI
+import os
+
+from fastapi import FastAPI, Query
 from app.models import AnalysisRequest, AnalysisResponse
 from app.services.analysis import analyze_fixture
+from app.services.sqlite_store import SQLiteMarketStore
+
+market_store = SQLiteMarketStore(
+    os.getenv("FOOTBALL_INTEL_DB_PATH", "data/football_intel.sqlite3")
+)
 
 app = FastAPI(
     title="Football Intel API",
-    description="A transparent football match-analysis foundation. Estimates use supplied statistics only.",
-    version="0.1.0",
+    description=(
+        "A transparent sports-intelligence foundation. Experimental estimates "
+        "use supplied statistics only; provider feeds require separate authorisation."
+    ),
+    version="0.2.0",
 )
 
 
 @app.get("/")
 def root():
-    return {"name": "Football Intel API", "version": app.version, "docs": "/docs"}
+    return {
+        "name": "Football Intel API",
+        "version": app.version,
+        "docs": "/docs",
+        "coverage": "/api/v1/coverage",
+    }
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "storage": "sqlite"}
+
+
+@app.get("/api/v1/coverage")
+def coverage():
+    """Return persisted market-observation coverage by provider."""
+    return market_store.coverage_report()
+
+
+@app.get("/api/v1/scans")
+def scans(limit: int = Query(default=50, ge=1, le=500)):
+    """Return recent provider scan runs, including partial failures."""
+    return {"scans": market_store.scan_history(limit=limit)}
 
 
 @app.post("/api/v1/analyze", response_model=AnalysisResponse)

@@ -1,13 +1,14 @@
 """Provider-neutral orchestration for bounded market-discovery scans.
 
-This first implementation is intentionally in-memory: it exercises the provider
-contract and preserves every returned market, while durable persistence is a
-separate roadmap step. Provider adapters are responsible for exhausting their
-permitted pagination and reporting only data their account may access.
+The orchestrator preserves every returned market and can optionally persist
+scan history, events and timestamped market snapshots through a storage adapter.
+Provider adapters are responsible for exhausting permitted pagination and
+reporting only data their account may access.
 """
 from __future__ import annotations
 
 import asyncio
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, TypeVar
@@ -15,6 +16,7 @@ from typing import Any, Awaitable, Callable, TypeVar
 from app.providers.base import OddsProvider, ProviderEvent
 from app.providers.registry import ProviderRegistry
 from app.services.market_inventory import MarketInventory
+from app.services.sqlite_store import SQLiteMarketStore
 
 T = TypeVar("T")
 
@@ -55,6 +57,7 @@ class IngestionOrchestrator:
         registry: ProviderRegistry,
         inventory: MarketInventory,
         *,
+        store: SQLiteMarketStore | None = None,
         max_concurrency: int = 8,
         max_retries: int = 2,
         retry_delay_seconds: float = 0.0,
@@ -67,6 +70,7 @@ class IngestionOrchestrator:
             raise ValueError("retry_delay_seconds cannot be negative")
         self.registry = registry
         self.inventory = inventory
+        self.store = store
         self.max_concurrency = max_concurrency
         self.max_retries = max_retries
         self.retry_delay_seconds = retry_delay_seconds
@@ -98,11 +102,21 @@ class IngestionOrchestrator:
     ) -> IngestionReport:
         provider: OddsProvider = self.registry.get(provider_id)
         started = datetime.now(timezone.utc)
+        scan_id = str(uuid.uuid4())
         report = IngestionReport(
             provider=provider.provider_id,
             scan_date=scan_date,
             started_at=started,
         )
+        if self.store is not None:
+            self.store.start_scan(
+                scan_id, provider.provider_id, scan_date, package, started.isoformat()
+            )
+
+        def finish() -> None:
+            report.completed_at = datetime.now(timezone.utc)
+            if self.store is not None:
+                self.store.finish_scan(scan_id, report)
 
         async def discover(stage: str, scope: str, operation: Callable[[], Awaitable[T]]) -> T | None:
             try:
@@ -120,7 +134,7 @@ class IngestionOrchestrator:
             report.sports_discovered = len(sports)
 
         if sports is None:
-            report.completed_at = datetime.now(timezone.utc)
+            finish()
             return report
 
         competitions: list[tuple[str, str]] = []
@@ -170,6 +184,8 @@ class IngestionOrchestrator:
         async def scan_event(event: ProviderEvent) -> None:
             async with semaphore:
                 self.inventory.record_event(event)
+                if self.store is not None:
+                    self.store.record_event(event, datetime.now(timezone.utc).isoformat())
                 markets = await discover(
                     "markets",
                     event.source_event_id,
@@ -179,6 +195,8 @@ class IngestionOrchestrator:
                     return
                 try:
                     snapshot = self.inventory.record_markets(event, markets)
+                    if self.store is not None:
+                        self.store.record_snapshot(snapshot, scan_id)
                 except Exception as exc:
                     report.failures.append(
                         ScanFailure("inventory", event.source_event_id, f"{type(exc).__name__}: {exc}")
@@ -192,5 +210,5 @@ class IngestionOrchestrator:
                 )
 
         await asyncio.gather(*(scan_event(event) for event in events_by_key.values()))
-        report.completed_at = datetime.now(timezone.utc)
+        finish()
         return report

@@ -18,7 +18,9 @@ Operators explicitly in scope include 1xBet and PariPesa/Paripesa, plus popular 
 
 ## Intelligence capabilities (target architecture)
 
-- Global multi-sport and multi-bookmaker market discovery.\n- Proprietary bookmaker-game catalogue and game-specific statistical research.\n- Virtual sports, instant games, crash/wheel mechanics and published fairness-rule analysis.
+- Global multi-sport and multi-bookmaker market discovery.
+- Proprietary bookmaker-game catalogue and game-specific statistical research.
+- Virtual sports, instant games, crash/wheel mechanics and published fairness-rule analysis.
 - Timestamped odds and market-state history.
 - Cross-book price comparison and movement timelines.
 - Observable bookmaker behaviour profiles.
@@ -35,10 +37,18 @@ See [the global bookmaker and market coverage strategy](docs/bookmaker-coverage.
 - Health endpoint and experimental match-analysis endpoint.
 - Provider-neutral event/market/selection contracts.
 - Provider registry and loss-aware in-memory market inventory.
+- Optional SQLite persistence for scan runs, provider events and timestamped market snapshots.
+- API endpoints for persisted coverage and recent scan history.
 - Global multi-sport/provider discovery requirements documented.
 - Intelligence architecture and phased development roadmap documented.
 - No bookmaker feeds or live market ingestion connected yet.
-- No persistent historical odds/game-results database, validated bookmaker behaviour profiles, proprietary-game research engine or evidence-grounded assistant yet.
+- No validated bookmaker behaviour profiles, proprietary-game research engine or evidence-grounded assistant yet.
+
+## Local storage
+
+The default SQLite database is created at `data/football_intel.sqlite3`. Set `FOOTBALL_INTEL_DB_PATH` to use another path. The `data/` directory and SQLite database files are excluded from Git.
+
+The ingestion orchestrator accepts a `SQLiteMarketStore` instance. When one is supplied, it records scan history, provider event observations, every market snapshot (including unclassified markets), and partial failures. SQLite is intended for local development and an early single-instance deployment; a managed PostgreSQL backend is the planned production direction for concurrent workers and larger data volumes.
 
 ## Important limitations
 
@@ -48,4 +58,4 @@ Bookmaker and proprietary-game insights will be based on observable, timestamped
 
 ## Tests
 
-Run pytest after installing requirements in a Python 3.10+ environment.
+Run `pytest` after installing requirements in a Python 3.10+ environment. SQLite uses Python's standard library and adds no third-party dependency.
