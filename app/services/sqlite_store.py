@@ -200,7 +200,7 @@ class SQLiteMarketStore:
         clauses = []
         parameters: list[Any] = []
         if provider:
-            clauses.append("ms.provider = ?")
+            clauses.append("provider = ?")
             parameters.append(provider)
         if stage:
             clauses.append("stage = ?")
@@ -497,7 +497,7 @@ class SQLiteMarketStore:
         clauses = []
         parameters: list[Any] = []
         if provider:
-            clauses.append("provider = ?")
+            clauses.append("ms.provider = ?")
             parameters.append(provider)
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
         with self._connection() as connection:
@@ -544,7 +544,6 @@ class SQLiteMarketStore:
                     "sports": set(),
                     "competitions": set(),
                     "packages": set(),
-                    "market_observations": 0,
                 })
                 stats["snapshot_ids"].add(row["id"])
                 stats["event_ids"].add(row["source_event_id"])
@@ -553,7 +552,6 @@ class SQLiteMarketStore:
                     stats["packages"].add(row["package"])
                 if not stats["source_book_name"] and market.get("source_book_name"):
                     stats["source_book_name"] = market["source_book_name"]
-                stats["market_observations"] += 1
                 if market.get("name"):
                     stats["market_names"].add(str(market["name"]))
                 stats["selections_received"] += len(market.get("selections", []))
