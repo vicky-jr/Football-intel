@@ -431,7 +431,7 @@ def test_provider_health_report_distinguishes_healthy_degraded_stale_and_running
 
     report = store.provider_health_report(
         as_of=datetime(2026, 11, 28, 11, 5, tzinfo=timezone.utc),
-        stale_after_seconds=3600,
+        stale_after_seconds=5400,
     )
     assert report["provider_count"] == 4
     assert report["providers"]["healthy-feed"]["health_status"] == "healthy"
