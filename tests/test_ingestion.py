@@ -92,7 +92,7 @@ def test_scan_isolates_event_market_failure_and_reports_partial_completion():
     provider = MockProvider(fail_event="event-2")
     orchestrator, inventory = make_orchestrator(provider, retries=0)
 
-    report = asyncio.run(orchestrator.scan("mock", "2026-11-28"))
+    report = asyncio.run(orchestrator.scan("mock", "2026-11-28", package="standard"))
 
     assert not report.complete
     assert report.events_discovered == 2
