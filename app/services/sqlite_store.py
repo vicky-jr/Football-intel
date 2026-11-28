@@ -306,6 +306,7 @@ class SQLiteMarketStore:
         source_market_id: str,
         source_selection_id: str,
         limit: int = 500,
+        source_book_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Return chronologically ordered prices for one provider-native selection."""
         if not 1 <= limit <= 2000:
@@ -328,6 +329,8 @@ class SQLiteMarketStore:
             for market in markets:
                 if market.get("source_market_id") != source_market_id:
                     continue
+                if source_book_id and market.get("source_book_id") != source_book_id:
+                    continue
                 for selection in market.get("selections", []):
                     if selection.get("source_selection_id") != source_selection_id:
                         continue
@@ -345,6 +348,8 @@ class SQLiteMarketStore:
                             "source_event_id": source_event_id,
                             "source_market_id": source_market_id,
                             "source_selection_id": source_selection_id,
+                            "source_book_id": market.get("source_book_id"),
+                            "source_book_name": market.get("source_book_name"),
                             "market_name": market.get("name"),
                             "market_period": market.get("period"),
                             "market_line": market.get("line"),

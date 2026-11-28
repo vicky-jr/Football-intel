@@ -194,10 +194,18 @@ class SportradarPrematchProvider:
         self._schedule_cache: dict[tuple[str, str], list[ProviderEvent]] = {}
         self._books_cache: list[dict[str, Any]] | None = None
         self._sports_cache: list[dict[str, Any]] | None = None
+        self.access_tier: str | None = None
+        self.access_origin_id: str | None = None
 
     async def list_books(self) -> list[dict[str, Any]]:
         if self._books_cache is None:
-            payload = await self.client.get_feed("books.json")
+            feed = await self.client.get_feed_response("books.json")
+            payload = feed.payload
+            self.access_origin_id = feed.metadata.x_origin_id
+            self.access_tier = {
+                "MARKET_ORIGIN_CORE_CRAWLERS": "oc_core",
+                "MARKET_ORIGIN_MAGIC_CRAWLERS": "oc_us",
+            }.get(self.access_origin_id, "unknown")
             books = payload.get("books")
             if not isinstance(books, list):
                 raise ValueError("Sportradar Books feed did not contain a books list")

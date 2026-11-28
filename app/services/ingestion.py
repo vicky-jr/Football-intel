@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from email.utils import parsedate_to_datetime
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, TypeVar
@@ -79,11 +80,30 @@ class IngestionOrchestrator:
         for attempt in range(self.max_retries + 1):
             try:
                 return await operation()
-            except Exception:
+            except Exception as exc:
                 if attempt >= self.max_retries:
                     raise
-                if self.retry_delay_seconds:
-                    await asyncio.sleep(self.retry_delay_seconds * (2 ** attempt))
+                retry_after = None
+                response = getattr(exc, "response", None)
+                headers = getattr(response, "headers", {}) if response is not None else {}
+                raw_retry_after = headers.get("retry-after") if headers else None
+                if raw_retry_after:
+                    try:
+                        retry_after = max(0.0, float(raw_retry_after))
+                    except (TypeError, ValueError):
+                        try:
+                            retry_time = parsedate_to_datetime(raw_retry_after)
+                            if retry_time.tzinfo is None:
+                                retry_time = retry_time.replace(tzinfo=timezone.utc)
+                            retry_after = max(
+                                0.0,
+                                (retry_time - datetime.now(timezone.utc)).total_seconds(),
+                            )
+                        except (TypeError, ValueError, OverflowError):
+                            retry_after = None
+                delay = retry_after if retry_after is not None else self.retry_delay_seconds * (2 ** attempt)
+                if delay:
+                    await asyncio.sleep(delay)
         raise RuntimeError("unreachable retry state")
 
     @staticmethod
@@ -152,6 +172,8 @@ class IngestionOrchestrator:
             if items is None:
                 continue
             for item in items:
+                if item.get("markets") is False:
+                    continue
                 try:
                     competitions.append((sport_id, self._source_id(item, scope="competition")))
                 except ValueError as exc:
