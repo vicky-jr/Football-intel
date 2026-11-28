@@ -246,11 +246,13 @@ def test_bookmaker_coverage_api_counts_only_verified_source_links(monkeypatch):
         last_checked_at="2026-11-28T14:00:00Z",
     )
     directory.add_source_link("example-book", "feed-b", "candidate-id", "Example New")
+    directory.add_source_link("example-book", "feed-c", "rejected-id", "Wrong Match")
+    directory.set_source_link_status("example-book", "feed-c", "rejected-id", "rejected")
 
     class FakeMarketStore:
         def source_book_coverage_report(self, provider=None):
             self.requested_providers = getattr(self, "requested_providers", [])
-            self.requested_providers.append(kwargs.get("provider"))
+            self.requested_providers.append(provider)
             return {
                 "source_books": [
                     {
