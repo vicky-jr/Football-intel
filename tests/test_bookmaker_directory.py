@@ -1,4 +1,7 @@
-from app.providers.bookmaker_directory import BookmakerDirectory, BookmakerProfile
+from app.providers.bookmaker_directory import (
+    BookmakerDirectory,
+    BookmakerProfile,
+)
 
 
 def test_seed_directory_contains_global_discovery_candidates_not_live_claims():
@@ -101,8 +104,6 @@ def test_sqlite_directory_preserves_operator_updates_when_seeded_again(tmp_path)
         verification_status="not_verified",
         notes="Connection configured; ingestion not verified.",
     ))
-
-    # Application restart should not reset a real status to the seed defaults.
     second = BookmakerDirectory(database_path=database)
     assert second.get("sportybet").integration_status == "connected"
 
@@ -118,3 +119,81 @@ def test_directory_summary_and_region_filter_only_report_recorded_regions():
     assert [x["operator_id"] for x in directory.list_profiles(region="ng")] == ["example-ng"]
     assert directory.summary()["live_ingestion_verified"] == 1
     assert directory.summary()["regions_with_recorded_support"] == ["GB", "NG"]
+
+
+def test_source_identity_link_starts_as_candidate_and_requires_evidence_to_verify():
+    directory = BookmakerDirectory()
+    directory.add_source_link("1xbet", "Sportradar", "book-123", "1X Bet")
+    link = directory.list_source_links("1xBet")[0]
+    assert link["provider_id"] == "sportradar"
+    assert link["source_book_id"] == "book-123"
+    assert link["verification_status"] == "candidate"
+
+    try:
+        directory.set_source_link_status(
+            "1xbet", "sportradar", "book-123", "verified"
+        )
+    except ValueError as exc:
+        assert "require evidence_url and last_checked_at" in str(exc)
+    else:
+        raise AssertionError("a link must not be verified without evidence")
+
+
+def test_source_identity_link_can_be_verified_with_auditable_evidence():
+    directory = BookmakerDirectory()
+    directory.add_source_link("bet365", "sportradar", "sr-42", "bet365")
+    directory.set_source_link_status(
+        "bet365", "sportradar", "sr-42", "verified",
+        evidence_url="https://example.org/provider-book-evidence",
+        last_checked_at="2026-11-28T12:30:00Z",
+        notes="Provider book identity matched against official operator evidence.",
+    )
+    link = directory.list_source_links("bet365")[0]
+    assert link["verification_status"] == "verified"
+    assert link["last_checked_at"] == "2026-11-28T12:30:00Z"
+    assert directory.summary()["verified_source_identity_links"] == 1
+
+
+def test_sqlite_source_identity_links_persist_and_require_known_operator(tmp_path):
+    database = tmp_path / "source-links.sqlite3"
+    first = BookmakerDirectory(database_path=database)
+    first.add_source_link("sportybet", "datafeed-a", "id-987", "SPORTYBET")
+    first.set_source_link_status(
+        "sportybet", "datafeed-a", "id-987", "verified",
+        evidence_url="https://example.org/source-match",
+        last_checked_at="2026-11-28T13:00:00Z",
+    )
+
+    second = BookmakerDirectory(database_path=database)
+    link = second.list_source_links("sportybet")[0]
+    assert link["verification_status"] == "verified"
+    assert link["source_book_name"] == "SPORTYBET"
+
+    try:
+        second.add_source_link("unknown-operator", "datafeed-a", "x", "Unknown")
+    except KeyError as exc:
+        assert "not in the discovery directory" in str(exc)
+    else:
+        raise AssertionError("source links must reference a known directory operator")
+
+
+def test_source_identity_link_rejects_duplicate_and_invalid_evidence_url():
+    directory = BookmakerDirectory()
+    directory.add_source_link("1xbet", "feed-x", "same-id", "1xBet")
+    try:
+        directory.add_source_link("1xbet", "feed-x", "same-id", "1xBet")
+    except ValueError as exc:
+        assert "already exists" in str(exc)
+    else:
+        raise AssertionError("duplicate source identity link should be rejected")
+
+    try:
+        directory.set_source_link_status(
+            "1xbet", "feed-x", "same-id", "verified",
+            evidence_url="not-a-url",
+            last_checked_at="2026-11-28T13:00:00Z",
+        )
+    except ValueError as exc:
+        assert "HTTP(S) URL" in str(exc)
+    else:
+        raise AssertionError("verified evidence must have a valid URL")

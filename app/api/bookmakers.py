@@ -58,6 +58,21 @@ def list_bookmakers(
     }
 
 
+@router.get("/{operator_id}/sources")
+def list_bookmaker_sources(operator_id: str):
+    """List provider-native identities associated with a bookmaker, including candidates."""
+    try:
+        profile = bookmaker_directory.get(operator_id)
+        links = bookmaker_directory.list_source_links(profile.operator_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {
+        "operator_id": profile.operator_id,
+        "source_links": links,
+        "note": "Candidate links are not treated as verified identity matches until evidence is reviewed.",
+    }
+
+
 @router.get("/{operator_id}")
 def get_bookmaker(operator_id: str):
     """Return one bookmaker's discovery, access and evidence record."""

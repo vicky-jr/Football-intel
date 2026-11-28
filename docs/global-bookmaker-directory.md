@@ -28,10 +28,11 @@ filled with assumptions.
 - `GET /api/v1/bookmakers?verification_status=verified`: filter evidence state.
 - `GET /api/v1/bookmakers/summary`: directory and verification totals.
 - `GET /api/v1/bookmakers/{operator_id}`: inspect an operator.
+- `GET /api/v1/bookmakers/{operator_id}/sources`: inspect data-provider identities for an operator.
 
-The HTTP API is read-only. Status changes are deliberately not exposed as
-unauthenticated public writes. A future authenticated administrative workflow
-must record who changed a status, when, and which evidence justified it.
+The HTTP API is read-only. Status changes and source-identity verification are not
+exposed as unauthenticated public writes. A future authenticated administrative
+workflow must record who changed a status, when, and which evidence justified it.
 
 ## Important definitions
 
@@ -43,6 +44,19 @@ must record who changed a status, when, and which evidence justified it.
   interpreted as a licence, legal opinion or global availability guarantee.
 - Region codes are recorded only after evidence review. An empty region list means
   unknown/not established, not unavailable everywhere.
+
+## Provider-native source identity
+
+One bookmaker can appear in a data-provider feed with a provider-specific ID and
+display label. These are represented as separate source-identity links. New links
+start as `candidate`; names alone never establish equivalence. A link can become
+`verified` only when an HTTP(S) evidence reference and last-checked timestamp are
+recorded. Rejected links remain available for audit and are not used as verified
+identity matches.
+
+This keeps source IDs stable for ingestion while allowing display names and
+aliases to vary across regions or providers. A verified identity link does not
+prove that all the bookmaker's sports or markets are covered.
 
 ## Next layer
 
