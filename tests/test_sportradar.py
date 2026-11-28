@@ -93,6 +93,10 @@ def test_adapter_discovers_books_sports_and_competitions():
 
 def test_adapter_builds_events_from_competition_schedule_and_filters_date():
     def handler(request):
+        if request.url.path.endswith("/sports.json"):
+            return _response({"sports":[{"id":"sr:sport:1","name":"Soccer","type":"competition"}]})
+        if request.url.path.endswith("/sports/sr:sport:1/competitions.json"):
+            return _response({"competitions":[{"id":"sr:competition:17","name":"Premier League","markets":True}]})
         if request.url.path.endswith("/schedules.json"):
             return _response({"schedules":[
                 {"sport_event":{"id":"e1","start_time":"2026-11-28T13:00:00+00:00",
@@ -106,9 +110,6 @@ def test_adapter_builds_events_from_competition_schedule_and_filters_date():
         adapter=SportradarPrematchProvider(client,page_size=50)
         await adapter.list_sports()
         await adapter.list_competitions("sr:sport:1")
-        # Register fixture discovery data for the schedule adapter.
-        adapter._competition_sports["sr:competition:17"]="sr:sport:1"
-        adapter._competition_names["sr:competition:17"]="Premier League"
         events=await adapter.list_events("sr:competition:17","2026-11-28")
         await adapter.close()
         return events
