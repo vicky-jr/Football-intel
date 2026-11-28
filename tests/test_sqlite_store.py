@@ -382,3 +382,77 @@ def test_provider_capability_report_filters_provider_and_returns_empty_for_unkno
     missing = store.provider_capability_report(provider="missing-feed")
     assert missing["provider_count"] == 0
     assert missing["providers"] == {}
+
+def test_provider_health_report_distinguishes_healthy_degraded_stale_and_running(tmp_path):
+    from datetime import datetime, timezone
+    from app.services.ingestion import IngestionReport, ScanFailure
+
+    store = SQLiteMarketStore(tmp_path / "provider-health.sqlite3")
+
+    def record_scan(scan_id, provider, started, completed=None, failures=None):
+        store.start_scan(
+            scan_id, provider, "2026-11-28", "prematch", started.isoformat()
+        )
+        if completed is not None:
+            report = IngestionReport(
+                provider=provider,
+                scan_date="2026-11-28",
+                started_at=started,
+            )
+            report.completed_at = completed
+            report.failures = failures or []
+            store.finish_scan(scan_id, report)
+
+    record_scan(
+        "healthy-1", "healthy-feed",
+        datetime(2026, 11, 28, 10, 0, tzinfo=timezone.utc),
+        datetime(2026, 11, 28, 10, 0, 2, tzinfo=timezone.utc),
+    )
+    record_scan(
+        "degraded-1", "degraded-feed",
+        datetime(2026, 11, 28, 10, 0, tzinfo=timezone.utc),
+        datetime(2026, 11, 28, 10, 0, 2, tzinfo=timezone.utc),
+    )
+    record_scan(
+        "degraded-2", "degraded-feed",
+        datetime(2026, 11, 28, 11, 0, tzinfo=timezone.utc),
+        datetime(2026, 11, 28, 11, 0, 3, tzinfo=timezone.utc),
+        [ScanFailure("markets", "event-1", "TimeoutException")],
+    )
+    record_scan(
+        "stale-1", "stale-feed",
+        datetime(2026, 11, 27, 10, 0, tzinfo=timezone.utc),
+        datetime(2026, 11, 27, 10, 0, 2, tzinfo=timezone.utc),
+    )
+    record_scan(
+        "running-1", "running-feed",
+        datetime(2026, 11, 28, 11, 4, tzinfo=timezone.utc),
+    )
+
+    report = store.provider_health_report(
+        as_of=datetime(2026, 11, 28, 11, 5, tzinfo=timezone.utc),
+        stale_after_seconds=3600,
+    )
+    assert report["provider_count"] == 4
+    assert report["providers"]["healthy-feed"]["health_status"] == "healthy"
+    assert report["providers"]["healthy-feed"]["last_scan_duration_seconds"] == 2.0
+    assert report["providers"]["degraded-feed"]["health_status"] == "degraded"
+    assert report["providers"]["degraded-feed"]["recent_window"]["failure_count"] == 1
+    assert report["providers"]["degraded-feed"]["recent_window"]["failure_stage_counts"] == {
+        "markets": 1
+    }
+    assert report["providers"]["stale-feed"]["health_status"] == "stale"
+    assert report["providers"]["running-feed"]["health_status"] == "running"
+    assert store.provider_health_report(
+        provider="missing-feed",
+        as_of=datetime(2026, 11, 28, 11, 5, tzinfo=timezone.utc),
+    )["provider_count"] == 0
+
+
+def test_provider_health_report_validates_staleness_window(tmp_path):
+    store = SQLiteMarketStore(tmp_path / "provider-health-validation.sqlite3")
+    import pytest
+    with pytest.raises(ValueError):
+        store.provider_health_report(stale_after_seconds=0)
+    with pytest.raises(ValueError):
+        store.provider_health_report(stale_after_seconds=604801)

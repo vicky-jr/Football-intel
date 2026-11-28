@@ -159,6 +159,39 @@ def one_provider_capabilities(provider_id: str):
     return report["providers"][provider_id]
 
 
+@app.get("/api/v1/providers/health")
+def provider_health(
+    provider_id: str | None = None,
+    stale_after_seconds: int = Query(default=1800, ge=1, le=604800),
+):
+    """Report provider reliability from persisted scan outcomes, not live probes."""
+    try:
+        return market_store.provider_health_report(
+            provider=provider_id,
+            stale_after_seconds=stale_after_seconds,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/providers/{provider_id}/health")
+def one_provider_health(
+    provider_id: str,
+    stale_after_seconds: int = Query(default=1800, ge=1, le=604800),
+):
+    """Return recorded health for one provider; providers without scans return 404."""
+    try:
+        report = market_store.provider_health_report(
+            provider=provider_id,
+            stale_after_seconds=stale_after_seconds,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not report["providers"]:
+        raise HTTPException(status_code=404, detail="No scan history recorded for this provider")
+    return report["providers"][provider_id]
+
+
 @app.get("/api/v1/coverage")
 def coverage():
     """Return persisted market-observation coverage by provider."""

@@ -115,6 +115,7 @@ are optional; use IDs returned by the discovery feed rather than guessing them.
 
 - `/api/v1/coverage`, `/api/v1/scans`: ingestion coverage and scan history.
 - `/api/v1/capabilities`, `/api/v1/providers/{provider_id}/capabilities`: observed source capability and scope reports.
+- `/api/v1/providers/health`, `/api/v1/providers/{provider_id}/health`: recorded provider scan health, staleness, duration and recurring failure stages. These are local scan metrics, not independent uptime probes.
 - `/api/v1/discovery/inventory`: raw Books, Sports and Competition discovery catalogue.
 - `/api/v1/integrations/sportradar/status`: local credential configuration status (no provider call).
 - `/api/v1/taxonomy/definitions`: canonical market definitions.

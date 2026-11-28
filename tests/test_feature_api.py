@@ -73,3 +73,32 @@ def test_provider_capability_api_exposes_observation_based_scope(monkeypatch):
  assert one_source.json()["scope_assessment"]["regional_availability"] == "not_established"
  missing = client.get("/api/v1/providers/not-seen/capabilities")
  assert missing.status_code == 404
+
+def test_provider_health_api_reports_observed_health_and_unknown_provider(monkeypatch):
+ from app import main as main_module
+
+ class FakeStore:
+  def provider_health_report(self, provider=None, stale_after_seconds=1800):
+   providers = {
+    "known-feed": {"provider_id": "known-feed", "health_status": "degraded"}
+   }
+   if provider:
+    providers = {key: value for key, value in providers.items() if key == provider}
+   return {
+    "provider_filter": provider,
+    "provider_count": len(providers),
+    "stale_after_seconds": stale_after_seconds,
+    "providers": providers,
+   }
+
+ monkeypatch.setattr(main_module, "market_store", FakeStore())
+ all_sources = client.get("/api/v1/providers/health?stale_after_seconds=900")
+ assert all_sources.status_code == 200
+ assert all_sources.json()["providers"]["known-feed"]["health_status"] == "degraded"
+ one_source = client.get("/api/v1/providers/known-feed/health")
+ assert one_source.status_code == 200
+ assert one_source.json()["health_status"] == "degraded"
+ missing = client.get("/api/v1/providers/not-seen/health")
+ assert missing.status_code == 404
+ invalid = client.get("/api/v1/providers/health?stale_after_seconds=0")
+ assert invalid.status_code == 422

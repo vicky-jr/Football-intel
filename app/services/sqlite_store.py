@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime, timezone
 from contextlib import contextmanager
 from dataclasses import asdict
 from pathlib import Path
@@ -850,5 +851,178 @@ class SQLiteMarketStore:
             "note": (
                 "This report measures observed capability only. It does not infer "
                 "unseen sports, regions, products, market families or entitlements."
+            ),
+        }
+
+    def provider_health_report(
+        self,
+        provider: str | None = None,
+        *,
+        stale_after_seconds: int = 1800,
+        as_of: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Summarize recorded collection reliability without probing providers.
+
+        Health labels describe local scan history only. They do not prove provider
+        uptime, contractual entitlement, bookmaker coverage or data completeness.
+        """
+        if (
+            isinstance(stale_after_seconds, bool)
+            or not isinstance(stale_after_seconds, int)
+            or not 1 <= stale_after_seconds <= 604800
+        ):
+            raise ValueError("stale_after_seconds must be between 1 and 604800")
+
+        reference_time = as_of or datetime.now(timezone.utc)
+        if not isinstance(reference_time, datetime):
+            raise ValueError("as_of must be a datetime")
+        if reference_time.tzinfo is None:
+            reference_time = reference_time.replace(tzinfo=timezone.utc)
+        reference_time = reference_time.astimezone(timezone.utc)
+
+        def parse_timestamp(value: str | None) -> datetime | None:
+            if not value:
+                return None
+            try:
+                parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except (TypeError, ValueError):
+                return None
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc)
+
+        clauses = []
+        parameters: list[Any] = []
+        if provider:
+            clauses.append("sr.provider = ?")
+            parameters.append(provider)
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+
+        with self._connection() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT sr.scan_id, sr.provider, sr.package, sr.started_at,
+                       sr.completed_at, sr.status, sf.stage
+                FROM scan_runs AS sr
+                LEFT JOIN scan_failures AS sf ON sf.scan_id = sr.scan_id
+                {where}
+                ORDER BY sr.provider ASC, sr.started_at DESC, sr.scan_id DESC,
+                         sf.stage ASC
+                """,
+                parameters,
+            ).fetchall()
+
+        scans_by_provider: dict[str, list[dict[str, Any]]] = {}
+        scans_by_id: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            scan = scans_by_id.get(row["scan_id"])
+            if scan is None:
+                scan = {
+                    "scan_id": row["scan_id"],
+                    "package": row["package"],
+                    "started_at": row["started_at"],
+                    "completed_at": row["completed_at"],
+                    "status": row["status"],
+                    "failure_stages": [],
+                }
+                scans_by_id[row["scan_id"]] = scan
+                scans_by_provider.setdefault(row["provider"], []).append(scan)
+            if row["stage"]:
+                scan["failure_stages"].append(row["stage"])
+
+        provider_reports: dict[str, dict[str, Any]] = {}
+        for provider_id, scans in sorted(scans_by_provider.items()):
+            latest = scans[0]
+            recent = scans[:10]
+            last_success = next(
+                (
+                    item for item in scans
+                    if item["status"] == "complete" and item["completed_at"]
+                ),
+                None,
+            )
+            last_success_at = (
+                last_success["completed_at"] if last_success else None
+            )
+            last_success_time = parse_timestamp(last_success_at)
+            last_success_age = (
+                max(0, int((reference_time - last_success_time).total_seconds()))
+                if last_success_time else None
+            )
+            latest_start_time = parse_timestamp(latest["started_at"])
+            latest_completed_time = parse_timestamp(latest["completed_at"])
+            latest_start_age = (
+                max(0, int((reference_time - latest_start_time).total_seconds()))
+                if latest_start_time else None
+            )
+            latest_duration = (
+                round(max(0.0, (latest_completed_time - latest_start_time).total_seconds()), 3)
+                if latest_completed_time and latest_start_time else None
+            )
+            recent_complete = sum(item["status"] == "complete" for item in recent)
+            recent_partial = sum(item["status"] == "partial" for item in recent)
+            recent_running = sum(item["status"] == "running" for item in recent)
+            recent_failure_stages: dict[str, int] = {}
+            for item in recent:
+                for stage in item["failure_stages"]:
+                    recent_failure_stages[stage] = recent_failure_stages.get(stage, 0) + 1
+            recent_failure_count = sum(recent_failure_stages.values())
+
+            if latest["status"] == "running":
+                if (
+                    (last_success_age is not None and last_success_age > stale_after_seconds)
+                    or (latest_start_age is not None and latest_start_age > stale_after_seconds)
+                ):
+                    health_status = "stale"
+                else:
+                    health_status = "running"
+            elif last_success_time is None:
+                health_status = "degraded"
+            elif last_success_age is not None and last_success_age > stale_after_seconds:
+                health_status = "stale"
+            elif latest["status"] != "complete" or recent_partial > 0:
+                health_status = "degraded"
+            else:
+                health_status = "healthy"
+
+            provider_reports[provider_id] = {
+                "provider_id": provider_id,
+                "health_status": health_status,
+                "stale_after_seconds": stale_after_seconds,
+                "last_scan": {
+                    **latest,
+                    "failure_count": len(latest["failure_stages"]),
+                },
+                "last_scan_age_seconds": latest_start_age,
+                "last_scan_duration_seconds": latest_duration,
+                "last_successful_scan_at": last_success_at,
+                "last_success_age_seconds": last_success_age,
+                "recent_window": {
+                    "window_size": len(recent),
+                    "complete_scans": recent_complete,
+                    "partial_scans": recent_partial,
+                    "running_scans": recent_running,
+                    "failure_count": recent_failure_count,
+                    "failure_stage_counts": dict(sorted(recent_failure_stages.items())),
+                    "complete_scan_rate": (
+                        round(recent_complete / len(recent), 4) if recent else None
+                    ),
+                },
+                "note": (
+                    "Based on locally recorded scans only. This is not an independent "
+                    "provider uptime probe and does not establish feed entitlement, "
+                    "geographic availability, market completeness or failover safety."
+                ),
+            }
+
+        return {
+            "provider_filter": provider,
+            "provider_count": len(provider_reports),
+            "stale_after_seconds": stale_after_seconds,
+            "providers": provider_reports,
+            "evidence_basis": "locally persisted scan_runs and scan_failures",
+            "note": (
+                "Health is based on recorded collection outcomes. Providers without "
+                "recorded scans are not included; no external uptime probe is performed."
             ),
         }
