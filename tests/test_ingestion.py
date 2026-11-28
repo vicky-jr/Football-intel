@@ -138,17 +138,10 @@ def test_scan_rejects_invalid_concurrency_and_retry_configuration():
         raise AssertionError("expected negative retries to be rejected")
 
 
-def test_stage_based_sports_are_reported_as_coverage_warnings():
+def test_stage_based_sports_without_stage_adapter_are_reported_as_coverage_warnings():
     class StageSportProvider(MockProvider):
         async def list_sports(self):
-            return [
-                {"id": "golf", "name": "Golf", "type": "stage"},
-                {"id": "football", "name": "Football", "type": "competition"},
-            ]
-
-        async def list_competitions(self, sport_id):
-            assert sport_id == "football"
-            return [{"id": "league-1", "name": "Test League"}]
+            return [{"id": "golf", "name": "Golf", "type": "stage"}]
 
     provider = StageSportProvider()
     orchestrator, inventory = make_orchestrator(provider)
@@ -156,12 +149,55 @@ def test_stage_based_sports_are_reported_as_coverage_warnings():
         orchestrator.scan("mock", "2026-11-28", package="standard")
     )
 
-    assert report.events_scanned == 2
-    assert report.coverage_warnings
-    assert "Stage-based sport Golf" in report.coverage_warnings[0]
+    assert report.events_scanned == 0
+    assert any("Stage-based sport Golf is not supported" in item for item in report.coverage_warnings)
     assert not report.complete
-    # The stage sport was not incorrectly sent to the competition endpoint.
-    assert len(inventory.snapshots_for_event("mock", "event-1")) == 1
+    assert inventory.snapshots_for_event("mock", "event-1") == []
+
+
+def test_stage_based_sports_use_stage_catalogue_and_daily_events():
+    class StageSportProvider(MockProvider):
+        async def list_sports(self):
+            return [{"id": "golf", "name": "Golf", "type": "stage"}]
+
+        async def list_stages(self, sport_id):
+            assert sport_id == "golf"
+            return [
+                {"id": "stage-1", "description": "The Open"},
+                {"id": "stage-2", "description": "Another Tournament"},
+            ]
+
+        async def list_sport_events(self, sport_id, date):
+            assert sport_id == "golf"
+            assert date == "2026-11-28"
+            return [
+                ProviderEvent("mock", "golf-event-1", "Golf", "The Open",
+                              "The Open - Round 1", "2026-11-28T08:00:00+00:00",
+                              "scheduled", raw={"stage_id": "stage-1"}),
+                ProviderEvent("mock", "golf-event-2", "Golf", "Another Tournament",
+                              "Another Tournament - Round 1", "2026-11-28T09:00:00+00:00",
+                              "scheduled", raw={"stage_id": "stage-2"}),
+            ]
+
+        async def list_competitions(self, sport_id):
+            raise AssertionError("stage sports must not use the competitions feed")
+
+    provider = StageSportProvider()
+    orchestrator, inventory = make_orchestrator(provider)
+    report = asyncio.run(
+        orchestrator.scan(
+            "mock", "2026-11-28", package="standard",
+            competition_ids={"stage-1"},
+        )
+    )
+
+    assert report.complete
+    assert report.stages_discovered == 2
+    assert report.competitions_discovered == 0
+    assert report.events_discovered == 1
+    assert report.events_scanned == 1
+    assert inventory.snapshots_for_event("mock", "golf-event-1")
+    assert inventory.snapshots_for_event("mock", "golf-event-2") == []
 
 
 def test_scan_can_be_scoped_to_sport_and_competition():

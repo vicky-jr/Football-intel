@@ -127,6 +127,54 @@ def test_adapter_builds_events_from_competition_schedule_and_filters_date():
     assert events[0].competition=="Premier League"
 
 
+def test_adapter_discovers_stages_and_builds_events_from_daily_sport_schedule():
+    seen_paths = []
+
+    def handler(request):
+        path = request.url.path
+        seen_paths.append(path)
+        if path.endswith("/sports.json"):
+            return _response({"sports":[{"id":"sr:sport:9","name":"Golf","type":"stage"}]})
+        if path.endswith("/sports/sr:sport:9/stages.json"):
+            return _response({"stages":[
+                {"id":"sr:stage:1","description":"The Open",
+                 "scheduled":"2026-11-28T00:00:00+00:00",
+                 "scheduled_end":"2026-12-01T00:00:00+00:00"}
+            ]})
+        if path.endswith("/sports/sr:sport:9/schedules/2026-11-28/schedules.json"):
+            return _response({"schedules":[
+                {"sport_event":{"id":"event-1","name":"The Open - Round 1",
+                  "start_time":"2026-11-28T08:00:00+00:00","status":"not_started",
+                  "sport_event_context":{"stage":{"id":"sr:stage:1"}}}},
+                {"sport_event":{"id":"event-2","name":"The Open - Round 2",
+                  "start_time":"2026-11-29T08:00:00+00:00","status":"not_started",
+                  "sport_event_context":{"stage":{"id":"sr:stage:1"}}}},
+                {"sport_event":{"id":"event-outside-window","name":"Later Event",
+                  "start_time":"2026-11-30T08:00:00+00:00","status":"not_started"}}
+            ]},{"x-max-results":"3","x-offset":"0","x-result":"3"})
+        return _response({"detail":"unexpected feed"},status=404)
+
+    async def run():
+        client=SportradarOddsClient(api_key="test",transport=httpx.MockTransport(handler))
+        adapter=SportradarPrematchProvider(client)
+        try:
+            await adapter.list_sports()
+            stages=await adapter.list_stages("sr:sport:9")
+            events=await adapter.list_sport_events("sr:sport:9","2026-11-28")
+            return stages,events
+        finally:
+            await adapter.close()
+
+    stages,events=asyncio.run(run())
+    assert stages[0]["id"]=="sr:stage:1"
+    assert len(events)==2
+    assert events[0].competition=="The Open"
+    assert events[0].raw["stage_id"]=="sr:stage:1"
+    assert events[1].source_event_id=="event-2"
+    assert any(path.endswith("/sports/sr:sport:9/stages.json") for path in seen_paths)
+    assert any(path.endswith("/sports/sr:sport:9/schedules/2026-11-28/schedules.json") for path in seen_paths)
+
+
 def test_adapter_preserves_book_specific_markets_and_selection_prices():
     def handler(request):
         return _response({"generated_at":"2026-11-28T10:00:00+00:00","markets":[
@@ -230,3 +278,57 @@ def test_full_mock_sportradar_scan_persists_book_specific_prices(tmp_path):
     assert market["source_book_name"]=="Book Seven"
     assert market["raw"]["external_market_id"]=="book-market-1"
     assert market["selections"][0]["odds_decimal"]==1.85
+
+def test_full_mock_stage_sport_scan_persists_stage_inventory_and_markets(tmp_path):
+    def handler(request):
+        path = request.url.path
+        if path.endswith("/books.json"):
+            return _response({"books":[{"id":"sr:book:7","name":"Book Seven"}]})
+        if path.endswith("/sports.json"):
+            return _response({"sports":[{"id":"sr:sport:9","name":"Golf","type":"stage"}]})
+        if path.endswith("/sports/sr:sport:9/stages.json"):
+            return _response({"stages":[
+                {"id":"sr:stage:1","description":"The Open",
+                 "scheduled":"2026-11-28T00:00:00+00:00",
+                 "scheduled_end":"2026-12-01T00:00:00+00:00"}
+            ]})
+        if path.endswith("/sports/sr:sport:9/schedules/2026-11-28/schedules.json"):
+            return _response({"schedules":[
+                {"sport_event":{"id":"sr:sport_event:99","name":"The Open - Round 1",
+                    "start_time":"2026-11-28T08:00:00+00:00","status":"not_started",
+                    "sport_event_context":{"stage":{"id":"sr:stage:1"}}}}
+            ]},{"x-max-results":"1","x-offset":"0","x-result":"1"})
+        if path.endswith("/sport_events/sr:sport_event:99/sport_event_markets.json"):
+            return _response({"generated_at":"2026-11-28T10:00:00+00:00","markets":[
+                {"id":"sr:market:1","name":"Winner","is_live":False,"books":[
+                    {"id":"sr:book:7","name":"Book Seven","removed":False,
+                     "outcomes":[{"id":"sr:outcome:1","type":"player_a","odds_decimal":"3.5"}]}
+                ]}
+            ]})
+        return _response({"detail":"unexpected feed"},status=404)
+
+    async def run():
+        client=SportradarOddsClient(api_key="test-key",transport=httpx.MockTransport(handler))
+        provider=SportradarPrematchProvider(client)
+        store=SQLiteMarketStore(tmp_path/"stage-sport.sqlite3")
+        orchestrator=IngestionOrchestrator(
+            ProviderRegistry([provider]),MarketInventory(),store=store,max_retries=0
+        )
+        try:
+            report=await orchestrator.scan("sportradar-prematch","2026-11-28",package="prematch")
+            return report,store
+        finally:
+            await provider.close()
+
+    report,store=asyncio.run(run())
+    assert report.complete
+    assert report.stages_discovered==1
+    assert report.competitions_discovered==0
+    assert report.events_discovered==1 and report.events_scanned==1
+    assert report.markets_received==1 and report.selections_received==1
+    stages=store.discovery_inventory(provider="sportradar-prematch",stage="stages")
+    assert stages[0]["source_id"]=="sr:stage:1"
+    snapshots=store.snapshots_for_event("sportradar-prematch","sr:sport_event:99")
+    assert len(snapshots)==1
+    assert snapshots[0]["markets"][0]["source_book_name"]=="Book Seven"
+

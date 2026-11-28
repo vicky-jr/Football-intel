@@ -40,6 +40,7 @@ class IngestionReport:
     books_discovered: int = 0
     sports_discovered: int = 0
     competitions_discovered: int = 0
+    stages_discovered: int = 0
     events_discovered: int = 0
     events_scanned: int = 0
     market_snapshots_recorded: int = 0
@@ -197,7 +198,9 @@ class IngestionOrchestrator:
             return report
 
         competitions: list[tuple[str, str]] = []
+        stage_events: list[ProviderEvent] = []
         discovered_competition_ids: set[str] = set()
+        discovered_stage_ids: set[str] = set()
         for sport in sports:
             try:
                 sport_id = self._source_id(sport, scope="sport")
@@ -210,9 +213,54 @@ class IngestionOrchestrator:
 
             sport_type = str(sport.get("type") or "competition").casefold()
             if sport_type == "stage":
-                report.coverage_warnings.append(
-                    f"Stage-based sport {sport.get('name') or sport_id} is not yet supported by the Prematch event-schedule adapter."
+                list_stages = getattr(provider, "list_stages", None)
+                list_sport_events = getattr(provider, "list_sport_events", None)
+                if not callable(list_stages) or not callable(list_sport_events):
+                    report.coverage_warnings.append(
+                        f"Stage-based sport {sport.get('name') or sport_id} is not supported by this provider adapter."
+                    )
+                    continue
+
+                stages = await discover(
+                    "stages",
+                    sport_id,
+                    lambda sport_id=sport_id: list_stages(sport_id),
                 )
+                if stages is not None:
+                    report.stages_discovered += len(stages)
+                    if self.store is not None:
+                        self.store.record_discovery_items(
+                            scan_id, provider.provider_id, "stages", sport_id,
+                            package, stages, datetime.now(timezone.utc).isoformat(),
+                        )
+                    for stage in stages:
+                        try:
+                            discovered_stage_ids.add(self._source_id(stage, scope="stage"))
+                        except ValueError as exc:
+                            report.failures.append(ScanFailure("stages", sport_id, str(exc)))
+
+                daily_events = await discover(
+                    "events",
+                    sport_id,
+                    lambda sport_id=sport_id: list_sport_events(sport_id, scan_date),
+                )
+                if daily_events is not None:
+                    for event in daily_events:
+                        if event.provider.strip().lower() != provider.provider_id.strip().lower():
+                            report.failures.append(
+                                ScanFailure("events", sport_id, "event provider does not match adapter")
+                            )
+                            continue
+                        if selected_competitions:
+                            stage_id = (event.raw or {}).get("stage_id")
+                            if not stage_id:
+                                report.coverage_warnings.append(
+                                    f"Could not safely apply the requested stage filter to event {event.source_event_id}; its source stage ID was missing."
+                                )
+                                continue
+                            if str(stage_id) not in selected_competitions:
+                                continue
+                        stage_events.append(event)
                 continue
             if sport_type != "competition":
                 report.coverage_warnings.append(
@@ -257,13 +305,16 @@ class IngestionOrchestrator:
                 )
 
         if selected_competitions:
-            for missing in sorted(selected_competitions - discovered_competition_ids):
+            for missing in sorted(selected_competitions - discovered_competition_ids - discovered_stage_ids):
                 report.coverage_warnings.append(
                     f"Requested competition ID was not present in this provider catalogue: {missing}"
                 )
 
         report.competitions_discovered = len(competitions)
         events_by_key: dict[tuple[str, str], ProviderEvent] = {}
+        for event in stage_events:
+            key = (event.provider.lower(), event.source_event_id)
+            events_by_key[key] = event
         for sport_id, competition_id in competitions:
             events = await discover(
                 "events",

@@ -191,6 +191,7 @@ class SportradarPrematchProvider:
         self._sport_names: dict[str, str] = {}
         self._competition_names: dict[str, str] = {}
         self._competition_sports: dict[str, str] = {}
+        self._stage_names: dict[str, str] = {}
         self._schedule_cache: dict[tuple[str, str], list[ProviderEvent]] = {}
         self._books_cache: list[dict[str, Any]] | None = None
         self._sports_cache: list[dict[str, Any]] | None = None
@@ -243,6 +244,21 @@ class SportradarPrematchProvider:
                 key = str(competition_id)
                 self._competition_names[key] = str(item.get("name", key))
                 self._competition_sports[key] = sport_id
+        return result
+
+    async def list_stages(self, sport_id: str) -> list[dict[str, Any]]:
+        """Return active stage/tour records for a stage-structured sport."""
+        if sport_id not in self._sport_names:
+            raise KeyError(f"sport has not been discovered: {sport_id}")
+        payload = await self.client.get_feed(f"sports/{sport_id}/stages.json")
+        stages = payload.get("stages")
+        if not isinstance(stages, list):
+            raise ValueError("Sportradar Sport Stages feed did not contain a stages list")
+        result = [item for item in stages if isinstance(item, dict)]
+        self._stage_names.update({
+            str(item["id"]): str(item.get("description") or item.get("name") or item["id"])
+            for item in result if item.get("id")
+        })
         return result
 
     @staticmethod
@@ -324,6 +340,75 @@ class SportradarPrematchProvider:
         if competition_id not in self._competition_sports:
             raise KeyError(f"competition has not been discovered: {competition_id}")
         return await self._competition_schedule(competition_id, date)
+
+    @staticmethod
+    def _stage_details(event: dict[str, Any]) -> tuple[str | None, str | None, dict[str, Any]]:
+        """Extract stage identity when the schedule payload includes sport-event context."""
+        context = event.get("sport_event_context") or event.get("context") or {}
+        stage = context.get("stage") if isinstance(context, dict) else None
+        if not isinstance(stage, dict):
+            stage = event.get("stage") if isinstance(event.get("stage"), dict) else {}
+        stage_id = stage.get("id") or event.get("stage_id")
+        stage_id = str(stage_id) if stage_id is not None else None
+        stage_name = stage.get("name") or stage.get("description")
+        if not stage_name and stage_id:
+            stage_name = None
+        return stage_id, str(stage_name) if stage_name else None, stage
+
+    async def list_sport_events(self, sport_id: str, date: str) -> list[ProviderEvent]:
+        """Load a daily sport schedule; this is the schedule path for stage-based sports."""
+        requested_date = date_type.fromisoformat(date)
+        if sport_id not in self._sport_names:
+            raise KeyError(f"sport has not been discovered: {sport_id}")
+
+        rows = await self.client.list_all(
+            f"sports/{sport_id}/schedules/{requested_date.isoformat()}/schedules.json",
+            "schedules",
+            page_size=self.page_size,
+        )
+        permitted_dates = {
+            requested_date.isoformat(),
+            (requested_date + timedelta(days=1)).isoformat(),
+        }
+        sport_name = self._sport_names.get(sport_id, sport_id)
+        events: list[ProviderEvent] = []
+        seen: set[str] = set()
+        for row in rows:
+            event = row.get("sport_event") if isinstance(row.get("sport_event"), dict) else row
+            if not isinstance(event, dict):
+                continue
+            event_id = event.get("id")
+            if not event_id or str(event_id) in seen:
+                continue
+            start_time = event.get("start_time")
+            if not isinstance(start_time, str) or len(start_time) < 10:
+                continue
+            if start_time[:10] not in permitted_dates:
+                continue
+
+            stage_id, stage_name, stage_details = self._stage_details(event)
+            if stage_id and not stage_name:
+                stage_name = self._stage_names.get(stage_id)
+            seen.add(str(event_id))
+            events.append(
+                ProviderEvent(
+                    provider=self.provider_id,
+                    source_event_id=str(event_id),
+                    sport=sport_name,
+                    competition=stage_name,
+                    name=self._event_name(event),
+                    start_time=start_time,
+                    status=event.get("status"),
+                    raw={
+                        "schedule": row,
+                        "sport_event": event,
+                        "source": "sportradar_odds_comparison_prematch_daily_schedule",
+                        "stage_id": stage_id,
+                        "stage": stage_details,
+                    },
+                )
+            )
+        return events
 
     @staticmethod
     def _decimal_odds(value: Any) -> float | None:

@@ -28,12 +28,12 @@ market depth is insufficient.
 ### A. Discover provider coverage
 1. Keep the API key server-side in an environment variable; never commit it or send it to the mobile client.
 2. Call the Books feed to record which bookmakers this key can see.
-3. Call Sports and Sport Competitions feeds to discover sports and competitions, including whether prematch markets, futures and player props are available.
-4. Save provider coverage snapshots with retrieval timestamps.
+3. Call Sports to discover sport IDs and their structure. For competition-based sports, call Sport Competitions; for stage-based sports, call Sport Stages and the sport's Daily Schedules feed. Record which package flags or event feeds actually expose data.
+4. Save provider coverage snapshots with retrieval timestamps, including stage/tour metadata.
 
 ### B. Discover events
-1. Use the relevant daily schedule feed for each supported sport/competition.
-2. Store source event ID, sport, competition, participants, start time, and event status.
+1. Use Competition Schedules for competition-structured sports and the sport/date Daily Schedules feed for stage-structured sports. The Daily Schedules feed is sport-scoped and covers the requested UTC date plus the following UTC date.
+2. Store source event ID, sport, competition or stage label/ID where supplied, participants, start time, and event status.
 3. Use source IDs as the primary event identity; use team/time matching only as a secondary cross-provider mapping method.
 
 ### C. Collect every available market

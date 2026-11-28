@@ -130,7 +130,7 @@ def discovery_inventory(
     stage: str | None = None,
     limit: int = Query(default=500, ge=1, le=5000),
 ):
-    """Return the raw Books/Sports/Competitions inventory discovered by provider scans."""
+    """Return the raw Books/Sports/Competitions/Stages inventory discovered by provider scans."""
     try:
         return {
             "items": market_store.discovery_inventory(

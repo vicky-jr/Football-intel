@@ -155,9 +155,9 @@ class SQLiteMarketStore:
         items: list[dict[str, Any]],
         captured_at: str,
     ) -> None:
-        """Persist exact Books/Sports/Competition discovery results for audit and coverage."""
-        if stage not in {"books", "sports", "competitions"}:
-            raise ValueError("stage must be books, sports or competitions")
+        """Persist exact Books/Sports/Competition/Stage discovery results for audit and coverage."""
+        if stage not in {"books", "sports", "competitions", "stages"}:
+            raise ValueError("stage must be books, sports, competitions or stages")
         if not provider.strip() or not scope.strip() or not package.strip():
             raise ValueError("provider, scope and package are required")
         if not captured_at.strip():
@@ -195,8 +195,8 @@ class SQLiteMarketStore:
         """Return persisted raw discovery items, newest first."""
         if not 1 <= limit <= 5000:
             raise ValueError("limit must be between 1 and 5000")
-        if stage is not None and stage not in {"books", "sports", "competitions"}:
-            raise ValueError("stage must be books, sports or competitions")
+        if stage is not None and stage not in {"books", "sports", "competitions", "stages"}:
+            raise ValueError("stage must be books, sports, competitions or stages")
         clauses = []
         parameters: list[Any] = []
         if provider:
@@ -282,6 +282,7 @@ class SQLiteMarketStore:
             "books_discovered": report.books_discovered,
             "sports_discovered": report.sports_discovered,
             "competitions_discovered": report.competitions_discovered,
+            "stages_discovered": report.stages_discovered,
             "events_discovered": report.events_discovered,
             "events_scanned": report.events_scanned,
             "market_snapshots_recorded": report.market_snapshots_recorded,
