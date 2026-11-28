@@ -354,3 +354,15 @@ class SQLiteMarketStore:
                         }
                     )
         return observations
+
+    def event_sport(self, provider: str, source_event_id: str) -> str | None:
+        """Return the latest known sport label for a provider-native event."""
+        with self._connection() as connection:
+            row = connection.execute(
+                """
+                SELECT sport FROM provider_events
+                WHERE provider = ? AND source_event_id = ?
+                """,
+                (provider, source_event_id),
+            ).fetchone()
+        return row["sport"] if row else None

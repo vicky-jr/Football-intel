@@ -181,7 +181,7 @@ class MarketTaxonomyRegistry:
                 raise ValueError(f"conflicting source market name mapping: {name_key}")
             self._by_source_name[name_key] = normalized
 
-    def classify(self, market: ProviderMarket) -> dict[str, Any]:
+    def classify(self, market: ProviderMarket, sport: str | None = None) -> dict[str, Any]:
         provider = market.provider.strip().casefold()
         mapping_method = None
         mapping = None
@@ -205,10 +205,13 @@ class MarketTaxonomyRegistry:
             }
 
         definition = self._definitions[mapping.canonical_type_id]
-        if market.sport if hasattr(market, "sport") else False:
-            # ProviderMarket currently receives sport through its event; retain
-            # this branch for future adapters that add a market-level sport field.
-            pass
+        if sport and normalize_market_name(sport) != normalize_market_name(definition.sport):
+            return {
+                "classified": False,
+                "canonical_market_id": None,
+                "reason": "sport_mismatch",
+                "mapping_method": mapping_method,
+            }
 
         if mapping.source_period and (
             (market.period or "").strip().casefold() != mapping.source_period

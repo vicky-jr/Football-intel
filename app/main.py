@@ -3,6 +3,7 @@ import os
 
 from fastapi import FastAPI, Query
 from app.models import AnalysisRequest, AnalysisResponse
+from app.providers.base import ProviderMarket, ProviderSelection
 from app.services.analysis import analyze_fixture
 from app.services.sqlite_store import SQLiteMarketStore
 from app.services.market_movement import summarize_odds_movement
@@ -101,7 +102,6 @@ def event_market_taxonomy(
             "status": market.get("status"),
             "selections": [],
         }
-        from app.providers.base import ProviderMarket, ProviderSelection
         source["selections"] = [
             ProviderSelection(
                 item.get("source_selection_id"),
@@ -118,7 +118,10 @@ def event_market_taxonomy(
             "source_market_name": provider_market.name,
             "source_period": provider_market.period,
             "source_line": provider_market.line,
-            "classification": market_taxonomy.classify(provider_market),
+            "classification": market_taxonomy.classify(
+                provider_market,
+                sport=market_store.event_sport(provider_id, source_event_id),
+            ),
         })
     return {
         "provider": provider_id,

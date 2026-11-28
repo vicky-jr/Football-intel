@@ -114,3 +114,15 @@ def test_line_normalization():
     assert normalize_line("2.50") == "2.5"
     assert normalize_line(0.0) == "0"
     assert normalize_line(None) is None
+
+
+def test_mapping_cannot_be_reused_for_a_different_sport():
+    taxonomy = MarketTaxonomyRegistry()
+    taxonomy.register_mapping(ProviderMarketMapping(
+        provider_id="book-a",
+        source_market_id="market-10",
+        canonical_type_id="football.total_goals",
+    ))
+    result = taxonomy.classify(market(), sport="basketball")
+    assert result["classified"] is False
+    assert result["reason"] == "sport_mismatch"
