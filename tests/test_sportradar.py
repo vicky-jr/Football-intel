@@ -4,6 +4,10 @@ import pytest
 
 from app.providers.base import ProviderEvent
 from app.providers.sportradar import SportradarOddsClient, SportradarPrematchProvider
+from app.providers.registry import ProviderRegistry
+from app.services.ingestion import IngestionOrchestrator
+from app.services.market_inventory import MarketInventory
+from app.services.sqlite_store import SQLiteMarketStore
 
 
 def _response(payload, headers=None, status=200):
