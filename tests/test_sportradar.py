@@ -155,3 +155,64 @@ def test_adapter_rejects_package_other_than_prematch():
             await adapter.get_event_markets(event,"live")
         await adapter.close()
     asyncio.run(run())
+
+
+def test_full_mock_sportradar_scan_persists_book_specific_prices(tmp_path):
+    def handler(request):
+        path=request.url.path
+        if path.endswith("/books.json"):
+            return _response(
+                {"books":[{"id":"sr:book:7","name":"Book Seven"}]},
+                {"x-origin-id":"MARKET_ORIGIN_CORE_CRAWLERS"},
+            )
+        if path.endswith("/sports.json"):
+            return _response({"sports":[{"id":"sr:sport:1","name":"Soccer","type":"competition"}]})
+        if path.endswith("/sports/sr:sport:1/competitions.json"):
+            return _response({"competitions":[{"id":"sr:competition:17","name":"Premier League","markets":True}]})
+        if path.endswith("/competitions/sr:competition:17/schedules.json"):
+            return _response({"schedules":[
+                {"sport_event":{"id":"sr:sport_event:77","start_time":"2026-11-28T18:00:00+00:00",
+                    "status":"not_started","competitors":[
+                        {"name":"Home FC","qualifier":"home"},{"name":"Away FC","qualifier":"away"}]}}
+            ]},{"x-max-results":"1","x-offset":"0","x-result":"1"})
+        if path.endswith("/sport_events/sr:sport_event:77/sport_event_markets.json"):
+            return _response({"generated_at":"2026-11-28T10:00:00+00:00","markets":[
+                {"id":"sr:market:1","name":"1x2","is_live":False,"books":[
+                    {"id":"sr:book:7","name":"Book Seven","removed":False,
+                     "external_market_id":"book-market-1","outcomes":[
+                        {"id":"sr:outcome:1","type":"home","odds_decimal":"1.85","open_odds_decimal":"1.90"},
+                        {"id":"sr:outcome:2","type":"draw","odds_decimal":"3.40"},
+                        {"id":"sr:outcome:3","type":"away","odds_decimal":"4.20"}
+                     ]}
+                ]}
+            ]})
+        return _response({"detail":"unexpected feed"},status=404)
+
+    async def run():
+        client=SportradarOddsClient(api_key="test-key",transport=httpx.MockTransport(handler))
+        provider=SportradarPrematchProvider(client)
+        store=SQLiteMarketStore(tmp_path/"sportradar.sqlite3")
+        orchestrator=IngestionOrchestrator(
+            ProviderRegistry([provider]),MarketInventory(),store=store,max_retries=0
+        )
+        try:
+            report=await orchestrator.scan("sportradar-prematch","2026-11-28",package="prematch")
+            return report,store,provider
+        finally:
+            await provider.close()
+
+    report,store,provider=asyncio.run(run())
+    assert report.complete
+    assert report.books_discovered==1
+    assert report.sports_discovered==1
+    assert report.competitions_discovered==1
+    assert report.events_discovered==1 and report.events_scanned==1
+    assert report.markets_received==1 and report.selections_received==3
+    assert provider.access_tier=="oc_core"
+    snapshots=store.snapshots_for_event("sportradar-prematch","sr:sport_event:77")
+    assert len(snapshots)==1
+    market=snapshots[0]["markets"][0]
+    assert market["source_book_id"]=="sr:book:7"
+    assert market["source_book_name"]=="Book Seven"
+    assert market["raw"]["external_market_id"]=="book-market-1"
+    assert market["selections"][0]["odds_decimal"]==1.85
