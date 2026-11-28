@@ -77,9 +77,26 @@ Open `/docs` for the interactive API reference. Screenshot OCR uses Pillow and p
 `data/football_intel.sqlite3`. Set `FOOTBALL_INTEL_DB_PATH` to choose another path.
 The `data/` directory and SQLite database files are excluded from Git.
 
+## First authorised Sportradar scan
+
+The Prematch adapter follows the documented Odds Comparison v2 feeds. It runs only when
+a server-side API key is configured. Credentials are never stored in Git.
+
+```bash
+export SPORTRADAR_ODDS_API_KEY="your-server-side-key"
+export SPORTRADAR_ACCESS_LEVEL="trial"
+python scripts/collect_sportradar_prematch.py 2026-11-28
+```
+
+Use `production` only when the account is provisioned for production. The scan reports
+the `X-Origin-Id` access tier and bookmaker count returned by that key. An `oc_us`
+response is not global-core access; OC Core must be enabled by Sportradar Support.
+The script stores event and bookmaker-specific market snapshots in local SQLite.
+
 ## API groups
 
 - `/api/v1/coverage`, `/api/v1/scans`: ingestion coverage and scan history.
+- `/api/v1/integrations/sportradar/status`: local credential configuration status (no provider call).
 - `/api/v1/taxonomy/definitions`: canonical market definitions.
 - `/api/v1/settlement-rules`: settlement profiles.
 - `/api/v1/events/match`: candidate cross-provider event matching.

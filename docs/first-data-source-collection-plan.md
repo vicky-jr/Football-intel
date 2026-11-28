@@ -12,7 +12,16 @@ Official references:
 - Global Core tier: https://developer.sportradar.com/odds/reference/oc-core-overview
 - Live Odds overview: https://developer.sportradar.com/odds/reference/oc-live-odds-overview
 
-This does not mean Sportradar includes every bookmaker in every country or every market on every event. The account's Books, Sports and Competition discovery feeds determine actual coverage. We must measure returned inventory before claiming coverage. Direct 1xBet and PariPesa adapters can be added later if the aggregator does not cover them or their market depth is insufficient.
+The implementation now uses the documented Prematch v2 Books, Sports, Sport Competitions,
+Competition Schedules, Sport Event Markets and pagination headers. It retains bookmaker
+identity on each market snapshot, along with the original market/book/outcome payloads.
+
+This does not mean Sportradar includes every bookmaker in every country or every market
+on every event. The account's Books, Sports and Competition discovery feeds determine
+actual coverage. OC Core is enabled at the API-key level by Sportradar Support; inspect
+the X-Origin-Id response header rather than assuming global-core access. Direct 1xBet
+and PariPesa adapters can be added later if the aggregator does not cover them or their
+market depth is insufficient.
 
 ## Collection flow
 

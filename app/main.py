@@ -109,6 +109,21 @@ def event_market_freshness(
     }
 
 
+@app.get("/api/v1/integrations/sportradar/status")
+def sportradar_integration_status():
+    """Report local configuration only; this endpoint does not make a paid API call."""
+    configured = bool(os.getenv("SPORTRADAR_ODDS_API_KEY"))
+    return {
+        "provider": "sportradar-prematch",
+        "configured": configured,
+        "package": "prematch",
+        "access_level": os.getenv("SPORTRADAR_ACCESS_LEVEL", "trial"),
+        "access_tier": "not_checked",
+        "note": "The actual access tier is determined from the X-Origin-Id response header after an authenticated Books request.",
+        "next_step": "Configure the server-side API key and run scripts/collect_sportradar_prematch.py" if not configured else "Run the Prematch collection script to verify live access and actual bookmaker coverage.",
+    }
+
+
 @app.get("/api/v1/coverage")
 def coverage():
     """Return persisted market-observation coverage by provider."""
@@ -199,16 +214,19 @@ def selection_movement(
     source_market_id: str,
     source_selection_id: str,
     limit: int = Query(default=500, ge=1, le=2000),
+    book_id: str | None = Query(default=None),
 ):
     """Summarize observed decimal-odds movement for one provider-native selection."""
     history = market_store.selection_price_history(
-        provider_id, source_event_id, source_market_id, source_selection_id, limit
+        provider_id, source_event_id, source_market_id, source_selection_id,
+        limit, source_book_id=book_id,
     )
     return {
         "provider": provider_id,
         "source_event_id": source_event_id,
         "source_market_id": source_market_id,
         "source_selection_id": source_selection_id,
+        "source_book_id": book_id,
         "observations": history,
         "movement": summarize_odds_movement(history),
     }
