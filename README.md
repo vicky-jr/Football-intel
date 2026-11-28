@@ -151,3 +151,12 @@ and production settlement verification remain future integration work. API reque
 flags and user-provided material are not themselves proof that a source or rule is true.
 
 No guaranteed-win, guaranteed-profit, risk-free or next-RNG-outcome claims are made.
+
+
+## Global bookmaker directory
+
+The API exposes `GET /api/v1/bookmakers` as a seed directory of operators being
+tracked for discovery. Directory presence is **not** proof of an integration, data
+licence, geographic availability or live market coverage. Each entry reports its
+current integration state separately. The directory is designed to expand as new
+operators and authorised data sources are researched.
