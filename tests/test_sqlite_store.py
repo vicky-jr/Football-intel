@@ -265,6 +265,8 @@ def test_source_book_coverage_reports_observed_provider_book_inventory(tmp_path)
     assert observed["packages_observed"] == ["prematch"]
     assert observed["sports_observed"] == ["basketball"]
     assert observed["competitions_observed"] == ["league-a"]
+    filtered = store.source_book_coverage_report(provider="feed-a")
+    assert filtered["source_book_count"] == 1
 
 
 def test_source_book_coverage_can_be_filtered_by_provider(tmp_path):

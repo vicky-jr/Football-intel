@@ -112,10 +112,19 @@ def get_bookmaker_coverage(operator_id: str):
 
     verified_links = [link for link in links if link["verification_status"] == "verified"]
     candidate_links = [link for link in links if link["verification_status"] == "candidate"]
-    observations = _market_store.source_book_coverage_report()
+    rejected_links = [link for link in links if link["verification_status"] == "rejected"]
+
+    # Query only providers referenced by verified identity links. This avoids a
+    # full historical-market scan as the global data store grows.
+    reports_by_provider = {}
+    for provider_id in sorted({link["provider_id"] for link in verified_links}):
+        reports_by_provider[provider_id] = _market_store.source_book_coverage_report(
+            provider=provider_id
+        )
     index = {
-        (item["provider_id"], item["source_book_id"]): item
-        for item in observations["source_books"]
+        (provider_id, item["source_book_id"]): item
+        for provider_id, report in reports_by_provider.items()
+        for item in report["source_books"]
     }
     mapped_observations = []
     verified_without_data = []
@@ -138,6 +147,7 @@ def get_bookmaker_coverage(operator_id: str):
         "coverage_state": state,
         "verified_source_links": verified_links,
         "candidate_source_links_not_counted": candidate_links,
+        "rejected_source_links": rejected_links,
         "verified_links_without_observations": verified_without_data,
         "observed_market_coverage": mapped_observations,
         "note": (

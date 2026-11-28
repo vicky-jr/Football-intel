@@ -114,6 +114,9 @@ class SQLiteMarketStore:
 
                 CREATE INDEX IF NOT EXISTS idx_market_snapshots_event_time
                     ON market_snapshots(provider, source_event_id, captured_at);
+
+                CREATE INDEX IF NOT EXISTS idx_market_snapshots_provider_time
+                    ON market_snapshots(provider, captured_at);
                 CREATE INDEX IF NOT EXISTS idx_market_snapshots_scan
                     ON market_snapshots(scan_id);
                 CREATE INDEX IF NOT EXISTS idx_scan_runs_provider_date
@@ -512,9 +515,18 @@ class SQLiteMarketStore:
                 """,
                 parameters,
             ).fetchall()
-            event_rows = connection.execute(
-                "SELECT provider, source_event_id, sport, competition FROM provider_events"
-            ).fetchall()
+            if provider:
+                event_rows = connection.execute(
+                    """
+                    SELECT provider, source_event_id, sport, competition
+                    FROM provider_events WHERE provider = ?
+                    """,
+                    (provider,),
+                ).fetchall()
+            else:
+                event_rows = connection.execute(
+                    "SELECT provider, source_event_id, sport, competition FROM provider_events"
+                ).fetchall()
 
         event_details = {
             (row["provider"], row["source_event_id"]): {

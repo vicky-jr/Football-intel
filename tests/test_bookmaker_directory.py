@@ -248,7 +248,9 @@ def test_bookmaker_coverage_api_counts_only_verified_source_links(monkeypatch):
     directory.add_source_link("example-book", "feed-b", "candidate-id", "Example New")
 
     class FakeMarketStore:
-        def source_book_coverage_report(self):
+        def source_book_coverage_report(self, provider=None):
+            self.requested_providers = getattr(self, "requested_providers", [])
+            self.requested_providers.append(kwargs.get("provider"))
             return {
                 "source_books": [
                     {
@@ -265,10 +267,48 @@ def test_bookmaker_coverage_api_counts_only_verified_source_links(monkeypatch):
             }
 
     monkeypatch.setattr(bookmaker_api, "bookmaker_directory", directory)
-    monkeypatch.setattr(bookmaker_api, "_market_store", FakeMarketStore())
+    fake_store = FakeMarketStore()
+    monkeypatch.setattr(bookmaker_api, "_market_store", fake_store)
     response = bookmaker_api.get_bookmaker_coverage("example-book")
 
     assert response["coverage_state"] == "observations_found"
     assert len(response["observed_market_coverage"]) == 1
     assert response["observed_market_coverage"][0]["provider_id"] == "feed-a"
     assert len(response["candidate_source_links_not_counted"]) == 1
+    assert len(response["rejected_source_links"]) == 1
+    assert fake_store.requested_providers == ["feed-a"]
+
+
+def test_suggested_identity_endpoint_reads_provider_books_without_auto_linking(monkeypatch):
+    from app.api import bookmakers as bookmaker_api
+
+    directory = BookmakerDirectory(profiles=[
+        BookmakerProfile("sportybet", "SportyBet", aliases=("sporty bet",)),
+    ])
+
+    class FakeMarketStore:
+        def discovery_inventory(self, provider=None, stage=None, limit=None):
+            assert provider == "feed-a"
+            assert stage == "books"
+            return [
+                {
+                    "provider": "feed-a", "source_id": "sb-1",
+                    "name": "SPORTY BET", "captured_at": "2026-11-28T15:00:00Z",
+                },
+                {
+                    "provider": "feed-a", "source_id": "unknown-1",
+                    "name": "Unlisted Operator", "captured_at": "2026-11-28T15:00:00Z",
+                },
+            ]
+
+    monkeypatch.setattr(bookmaker_api, "bookmaker_directory", directory)
+    monkeypatch.setattr(bookmaker_api, "_market_store", FakeMarketStore())
+    response = bookmaker_api.suggested_bookmaker_source_links(
+        provider_id="feed-a", limit=100
+    )
+
+    assert response["source_books_considered"] == 2
+    assert response["suggestion_counts"] == {
+        "exact_name_candidate": 1, "unmatched": 1,
+    }
+    assert directory.list_source_links() == []
