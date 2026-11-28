@@ -36,6 +36,8 @@ class TesseractBetSlipOCR:
                 data=pytesseract.image_to_data(image,config="--psm 6",output_type=Output.DICT)
         except ValueError:
             raise
+        except RuntimeError as exc:
+            raise RuntimeError("Tesseract OCR executable is unavailable or failed to start") from exc
         except Exception as exc:
             raise ValueError(f"image could not be decoded or OCR failed: {type(exc).__name__}") from exc
 

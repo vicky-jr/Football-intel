@@ -41,8 +41,9 @@ to predict the next independent outcome.
   and expected calibration error. No production-trained or calibrated model is claimed.
 - **Bookmaker behaviour:** descriptive summaries of observed price changes, suspensions,
   first-observed mover share and follow-on behaviour, with sample-size gates.
-- **Bet-slip intelligence:** reconstructs explicit selection/odds lines from OCR text
-  supplied by a caller. It does not currently perform OCR on image bytes.
+- **Bet-slip intelligence:** includes an optional Tesseract/Pillow screenshot OCR endpoint and
+  a text parser that preserves unparsed lines. It requires the Tesseract system executable;
+  images are processed in memory and not retained by the endpoint.
 - **Responsible-gambling controls:** configured single-stake, daily-stake, exposure,
   daily-loss, self-exclusion and cooling-off checks, plus a user-entered risk ledger.
   The ledger is not connected to bookmaker accounts.
@@ -70,7 +71,9 @@ python -m pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-Open `/docs` for the interactive API reference. The default SQLite database is
+Open `/docs` for the interactive API reference. Screenshot OCR uses Pillow and pytesseract,
+  and also requires the Tesseract executable and suitable language data to be installed on the host.
+  The default SQLite database is
 `data/football_intel.sqlite3`. Set `FOOTBALL_INTEL_DB_PATH` to choose another path.
 The `data/` directory and SQLite database files are excluded from Git.
 
@@ -83,7 +86,7 @@ The `data/` directory and SQLite database files are excluded from Git.
 - `/api/v1/odds/compare`: comparable quote calculations.
 - `/api/v1/models/backtest`: chronological forecast evaluation.
 - `/api/v1/alerts`: price alert rules, evaluations and alert history.
-- `/api/v1/bet-slips/reconstruct`: reconstruction from supplied OCR text.
+- `/api/v1/bet-slips/ocr`, `/api/v1/bet-slips/reconstruct`: screenshot OCR and supplied-text reconstruction.
 - `/api/v1/risk`: configured risk checks and user-entered records.
 - `/api/v1/games`: proprietary-game descriptive research.
 - `/api/v1/bookmakers/behaviour`: observable behaviour summaries.
@@ -104,7 +107,7 @@ secret management, rate limiting, audit trails, privacy/retention controls, back
 monitoring and security review. Analyst workspace and user-entered risk records are
 currently local storage foundations, not secure account services.
 
-A native OCR/image upload service, push notifications, deployed specialist AI models,
+Push notifications, deployed specialist AI models,
 an immutable model registry, walk-forward training pipelines, live bookmaker adapters
 and production settlement verification remain future integration work. API request
 flags and user-provided material are not themselves proof that a source or rule is true.

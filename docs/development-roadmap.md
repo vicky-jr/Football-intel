@@ -15,6 +15,7 @@
 - [x] Chronological model evaluation with Brier, log loss and calibration error.
 - [x] Threshold alerts, persisted alert rules, event history and cooldown deduplication.
 - [x] OCR-text bet-slip reconstruction and verification-required output.
+- [x] Optional Tesseract/Pillow screenshot OCR endpoint with in-memory image handling.
 - [x] Responsible-gambling limit checks and user-entered exposure ledger.
 - [x] Proprietary-game sample analysis and seed-commitment consistency check.
 - [x] Specialist evidence aggregation and confidence/abstention gate.

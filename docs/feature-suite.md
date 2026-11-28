@@ -58,12 +58,15 @@ handling and alert performance metrics.
 
 ## 6. Screenshot and bet-slip intelligence
 
-Implemented: conservative parsing of supplied OCR text, line-level preservation of
-unparsed text, combined odds calculation and mandatory verification flags.
+Implemented: optional Tesseract/Pillow screenshot OCR endpoint, input size and pixel
+limits, SHA-256 image fingerprinting, in-memory image processing, OCR-token confidence,
+conservative line parsing, unparsed-line preservation, combined odds calculation and
+mandatory event/market verification flags.
 
-Remaining: native image upload, OCR engine, image quality checks, multilingual support,
-malware scanning, user consent, secure evidence retention, event/market resolution and
-bookmaker-specific bet-slip semantics. The current parser does not perform OCR.
+Remaining: host installation and operation of the Tesseract binary/language packs,
+image quality checks, multilingual tuning, malware scanning for any future persisted
+uploads, explicit consent UX, secure evidence retention, event/market resolution and
+bookmaker-specific bet-slip semantics. OCR text is not semantic verification.
 
 ## 7. Responsible-gambling and exposure management
 
