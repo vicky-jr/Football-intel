@@ -181,6 +181,7 @@ class SQLiteMarketStore:
             "markets_received": report.markets_received,
             "selections_received": report.selections_received,
             "failures": [asdict(failure) for failure in report.failures],
+            "coverage_warnings": list(report.coverage_warnings),
         }
         status = "complete" if report.complete else "partial"
         with self._connection() as connection:

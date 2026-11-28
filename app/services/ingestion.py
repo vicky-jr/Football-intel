@@ -44,10 +44,11 @@ class IngestionReport:
     markets_received: int = 0
     selections_received: int = 0
     failures: list[ScanFailure] = field(default_factory=list)
+    coverage_warnings: list[str] = field(default_factory=list)
 
     @property
     def complete(self) -> bool:
-        return self.completed_at is not None and not self.failures
+        return self.completed_at is not None and not self.failures and not self.coverage_warnings
 
 
 class IngestionOrchestrator:
@@ -159,6 +160,17 @@ class IngestionOrchestrator:
 
         competitions: list[tuple[str, str]] = []
         for sport in sports:
+            sport_type = str(sport.get("type") or "competition").casefold()
+            if sport_type == "stage":
+                report.coverage_warnings.append(
+                    f"Stage-based sport {sport.get('name') or sport.get('id')} is not yet supported by the Prematch event-schedule adapter."
+                )
+                continue
+            if sport_type != "competition":
+                report.coverage_warnings.append(
+                    f"Unknown sport catalogue type '{sport_type}' for {sport.get('name') or sport.get('id')}; skipped safely."
+                )
+                continue
             try:
                 sport_id = self._source_id(sport, scope="sport")
             except ValueError as exc:
