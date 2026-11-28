@@ -1,7 +1,7 @@
 """FastAPI application for Football Intel."""
 import os
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException
 from app.models import AnalysisRequest, AnalysisResponse
 from app.providers.base import ProviderMarket, ProviderSelection
 from app.services.analysis import analyze_fixture
@@ -217,10 +217,13 @@ def selection_movement(
     book_id: str | None = Query(default=None),
 ):
     """Summarize observed decimal-odds movement for one provider-native selection."""
-    history = market_store.selection_price_history(
-        provider_id, source_event_id, source_market_id, source_selection_id,
-        limit, source_book_id=book_id,
-    )
+    try:
+        history = market_store.selection_price_history(
+            provider_id, source_event_id, source_market_id, source_selection_id,
+            limit, source_book_id=book_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {
         "provider": provider_id,
         "source_event_id": source_event_id,

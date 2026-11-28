@@ -359,6 +359,14 @@ class SQLiteMarketStore:
                             "odds_decimal": float(price),
                         }
                     )
+        observed_books = {
+            item["source_book_id"] for item in observations
+            if item.get("source_book_id")
+        }
+        if source_book_id is None and len(observed_books) > 1:
+            raise ValueError(
+                "source_book_id is required when this selection exists at multiple bookmakers"
+            )
         return observations
 
     def event_sport(self, provider: str, source_event_id: str) -> str | None:

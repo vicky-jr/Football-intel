@@ -114,3 +114,56 @@ def test_store_records_partial_scan_failures(tmp_path):
     history = store.scan_history()
     assert history[0]["status"] == "partial"
     assert history[0]["report"]["failures"][0]["stage"] == "markets"
+
+
+def test_bookmaker_specific_price_history_requires_book_filter_when_ambiguous(tmp_path):
+    from datetime import datetime, timezone
+    import pytest
+    from app.providers.base import ProviderEvent, ProviderMarket, ProviderSelection
+    from app.services.market_inventory import EventMarketSnapshot
+
+    store = SQLiteMarketStore(tmp_path / "book-filter.sqlite3")
+    event = ProviderEvent(
+        provider="sportradar-prematch",
+        source_event_id="event-1",
+        sport="football",
+        competition="league",
+        name="Home v Away",
+        start_time=None,
+        status="scheduled",
+    )
+    for book_id, price in (("book-a", 1.8), ("book-b", 1.9)):
+        scan_id = f"scan-{book_id}"
+        store.start_scan(scan_id, "sportradar-prematch", "2026-11-28", "prematch",
+                         "2026-11-28T10:00:00+00:00")
+        store.record_event(event, "2026-11-28T10:00:00+00:00")
+        market = ProviderMarket(
+            provider="sportradar-prematch",
+            source_event_id="event-1",
+            source_market_id="market-1",
+            name="Match Winner",
+            period=None,
+            line=None,
+            status="active",
+            selections=[ProviderSelection("home", "Home", price)],
+            source_book_id=book_id,
+            source_book_name=book_id,
+        )
+        snapshot = EventMarketSnapshot(
+            provider="sportradar-prematch",
+            source_event_id="event-1",
+            captured_at=datetime(2026, 11, 28, 10, 0, tzinfo=timezone.utc),
+            markets=(market,),
+        )
+        store.record_snapshot(snapshot, scan_id)
+
+    with pytest.raises(ValueError, match="source_book_id is required"):
+        store.selection_price_history("sportradar-prematch", "event-1", "market-1", "home")
+
+    filtered = store.selection_price_history(
+        "sportradar-prematch", "event-1", "market-1", "home",
+        source_book_id="book-b",
+    )
+    assert len(filtered) == 1
+    assert filtered[0]["source_book_id"] == "book-b"
+    assert filtered[0]["odds_decimal"] == 1.9
