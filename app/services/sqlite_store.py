@@ -298,3 +298,59 @@ class SQLiteMarketStore:
             }
             for row in rows
         ]
+
+    def selection_price_history(
+        self,
+        provider: str,
+        source_event_id: str,
+        source_market_id: str,
+        source_selection_id: str,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        """Return chronologically ordered prices for one provider-native selection."""
+        if not 1 <= limit <= 2000:
+            raise ValueError("limit must be between 1 and 2000")
+        with self._connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, captured_at, markets_json
+                FROM market_snapshots
+                WHERE provider = ? AND source_event_id = ?
+                ORDER BY captured_at DESC, id DESC
+                LIMIT ?
+                """,
+                (provider, source_event_id, limit),
+            ).fetchall()
+
+        observations: list[dict[str, Any]] = []
+        for row in reversed(rows):
+            markets = json.loads(row["markets_json"])
+            for market in markets:
+                if market.get("source_market_id") != source_market_id:
+                    continue
+                for selection in market.get("selections", []):
+                    if selection.get("source_selection_id") != source_selection_id:
+                        continue
+                    price = selection.get("odds_decimal")
+                    if (
+                        isinstance(price, bool)
+                        or not isinstance(price, (int, float))
+                        or price <= 0
+                    ):
+                        continue
+                    observations.append(
+                        {
+                            "captured_at": row["captured_at"],
+                            "provider": provider,
+                            "source_event_id": source_event_id,
+                            "source_market_id": source_market_id,
+                            "source_selection_id": source_selection_id,
+                            "market_name": market.get("name"),
+                            "market_period": market.get("period"),
+                            "market_line": market.get("line"),
+                            "market_status": market.get("status"),
+                            "selection_name": selection.get("name"),
+                            "odds_decimal": float(price),
+                        }
+                    )
+        return observations

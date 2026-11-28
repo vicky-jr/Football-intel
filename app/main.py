@@ -5,6 +5,7 @@ from fastapi import FastAPI, Query
 from app.models import AnalysisRequest, AnalysisResponse
 from app.services.analysis import analyze_fixture
 from app.services.sqlite_store import SQLiteMarketStore
+from app.services.market_movement import summarize_odds_movement
 
 market_store = SQLiteMarketStore(
     os.getenv("FOOTBALL_INTEL_DB_PATH", "data/football_intel.sqlite3")
@@ -60,6 +61,31 @@ def event_market_snapshots(
         "snapshots": market_store.snapshots_for_event(
             provider_id, source_event_id, limit=limit
         ),
+    }
+
+
+@app.get(
+    "/api/v1/providers/{provider_id}/events/{source_event_id}/markets/"
+    "{source_market_id}/selections/{source_selection_id}/movement"
+)
+def selection_movement(
+    provider_id: str,
+    source_event_id: str,
+    source_market_id: str,
+    source_selection_id: str,
+    limit: int = Query(default=500, ge=1, le=2000),
+):
+    """Summarize observed decimal-odds movement for one provider-native selection."""
+    history = market_store.selection_price_history(
+        provider_id, source_event_id, source_market_id, source_selection_id, limit
+    )
+    return {
+        "provider": provider_id,
+        "source_event_id": source_event_id,
+        "source_market_id": source_market_id,
+        "source_selection_id": source_selection_id,
+        "observations": history,
+        "movement": summarize_odds_movement(history),
     }
 
 
