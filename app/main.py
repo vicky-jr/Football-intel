@@ -47,6 +47,22 @@ def scans(limit: int = Query(default=50, ge=1, le=500)):
     return {"scans": market_store.scan_history(limit=limit)}
 
 
+@app.get("/api/v1/providers/{provider_id}/events/{source_event_id}/snapshots")
+def event_market_snapshots(
+    provider_id: str,
+    source_event_id: str,
+    limit: int = Query(default=100, ge=1, le=500),
+):
+    """Return the original market and selection payloads captured for an event."""
+    return {
+        "provider": provider_id,
+        "source_event_id": source_event_id,
+        "snapshots": market_store.snapshots_for_event(
+            provider_id, source_event_id, limit=limit
+        ),
+    }
+
+
 @app.post("/api/v1/analyze", response_model=AnalysisResponse)
 def analyze(request: AnalysisRequest):
     """Analyze a fixture from user-supplied team statistics."""

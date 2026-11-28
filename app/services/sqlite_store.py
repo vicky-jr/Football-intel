@@ -272,3 +272,29 @@ class SQLiteMarketStore:
             }
             for row in rows
         ]
+
+    def snapshots_for_event(
+        self, provider: str, source_event_id: str, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        """Return newest persisted snapshots with their original market payloads."""
+        if not 1 <= limit <= 500:
+            raise ValueError("limit must be between 1 and 500")
+        with self._connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT scan_id, captured_at, markets_json
+                FROM market_snapshots
+                WHERE provider = ? AND source_event_id = ?
+                ORDER BY captured_at DESC, id DESC
+                LIMIT ?
+                """,
+                (provider, source_event_id, limit),
+            ).fetchall()
+        return [
+            {
+                "scan_id": row["scan_id"],
+                "captured_at": row["captured_at"],
+                "markets": json.loads(row["markets_json"]),
+            }
+            for row in rows
+        ]

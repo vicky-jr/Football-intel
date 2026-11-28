@@ -86,6 +86,13 @@ def test_store_persists_scan_events_and_unclassified_market_snapshots(tmp_path):
     assert history[0]["status"] == "complete"
     assert history[0]["report"]["markets_received"] == 1
 
+    snapshots = reopened.snapshots_for_event("persistent-mock", "event-1")
+    assert len(snapshots) == 1
+    market = snapshots[0]["markets"][0]
+    assert market["raw"]["source_market_code"] == "CUSTOM_99"
+    assert market["selections"][0]["raw"]["source_outcome_code"] == "Y"
+    assert market["classified"] is False
+
 
 def test_store_records_partial_scan_failures(tmp_path):
     database = tmp_path / "partial.sqlite3"
