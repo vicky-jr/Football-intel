@@ -31,7 +31,7 @@ def test_blocks_candidate_events_unverified_markets_settlement_and_stale_quotes(
  offer(canonical_event_id="event-4",freshness_status="stale"),
  offer(canonical_event_id="event-5",market_status="suspended")]
  legs=[leg(canonical_event_id=f"event-{i}") for i in range(1,6)]
- r=plan_bookmaker_portability(source_bookmaker_id="a",destination_bookmaker_id="b",
+ r=plan_bookmaker_portability(source_bookmaker_id="book-a",destination_bookmaker_id="book-b",
  source_legs=legs,destination_offers=offers)
  assert r["status"]=="no_verified_mapping"
  assert all(x["status"]=="requires_review" for x in r["legs"])
@@ -42,12 +42,12 @@ def test_blocks_candidate_events_unverified_markets_settlement_and_stale_quotes(
  assert "market_not_open" in r["legs"][4]["blockers"]
 
 def test_partial_slip_never_gets_a_combined_quote():
- r=plan_bookmaker_portability(source_bookmaker_id="a",destination_bookmaker_id="b",
+ r=plan_bookmaker_portability(source_bookmaker_id="book-a",destination_bookmaker_id="book-b",
  source_legs=[leg(),leg(canonical_event_id="missing")],destination_offers=[offer()])
  assert r["status"]=="partially_mapped" and r["destination_combined_decimal_odds"] is None
 
 def test_best_eligible_price_is_selected():
- r=plan_bookmaker_portability(source_bookmaker_id="a",destination_bookmaker_id="b",
+ r=plan_bookmaker_portability(source_bookmaker_id="book-a",destination_bookmaker_id="book-b",
  source_legs=[leg()],destination_offers=[offer(odds_decimal=1.8),
  offer(odds_decimal=1.95,destination_market_id="best")])
  assert r["legs"][0]["destination_offer"]["odds_decimal"]==1.95
