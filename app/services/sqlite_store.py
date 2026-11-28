@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import contextmanager
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator, TYPE_CHECKING
 
 from app.providers.base import ProviderEvent
-from app.services.ingestion import IngestionReport
+if TYPE_CHECKING:
+    from app.services.ingestion import IngestionReport
 from app.services.market_inventory import EventMarketSnapshot
 
 
@@ -33,8 +35,20 @@ class SQLiteMarketStore:
         connection.execute("PRAGMA busy_timeout = 30000")
         return connection
 
+    @contextmanager
+    def _connection(self) -> Iterator[sqlite3.Connection]:
+        connection = self._connect()
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
     def _initialize(self) -> None:
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.executescript(
                 """
                 PRAGMA journal_mode = WAL;
@@ -103,7 +117,7 @@ class SQLiteMarketStore:
         package: str,
         started_at: str,
     ) -> None:
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute(
                 """
                 INSERT INTO scan_runs
@@ -114,7 +128,7 @@ class SQLiteMarketStore:
             )
 
     def record_event(self, event: ProviderEvent, seen_at: str) -> None:
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute(
                 """
                 INSERT INTO provider_events (
@@ -143,7 +157,7 @@ class SQLiteMarketStore:
             payload = asdict(market)
             # Preserve each source selection and its raw provider payload.
             markets.append(payload)
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute(
                 """
                 INSERT INTO market_snapshots
@@ -156,7 +170,7 @@ class SQLiteMarketStore:
                 ),
             )
 
-    def finish_scan(self, scan_id: str, report: IngestionReport) -> None:
+    def finish_scan(self, scan_id: str, report: "IngestionReport") -> None:
         report_data = {
             "books_discovered": report.books_discovered,
             "sports_discovered": report.sports_discovered,
@@ -169,7 +183,7 @@ class SQLiteMarketStore:
             "failures": [asdict(failure) for failure in report.failures],
         }
         status = "complete" if report.complete else "partial"
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute(
                 """
                 UPDATE scan_runs
@@ -194,7 +208,7 @@ class SQLiteMarketStore:
             )
 
     def coverage_report(self) -> dict[str, Any]:
-        with self._connect() as connection:
+        with self._connection() as connection:
             rows = connection.execute(
                 """
                 SELECT provider, source_event_id, captured_at, markets_json
@@ -236,7 +250,7 @@ class SQLiteMarketStore:
     def scan_history(self, limit: int = 50) -> list[dict[str, Any]]:
         if not 1 <= limit <= 500:
             raise ValueError("limit must be between 1 and 500")
-        with self._connect() as connection:
+        with self._connection() as connection:
             rows = connection.execute(
                 """
                 SELECT scan_id, provider, scan_date, package, started_at,

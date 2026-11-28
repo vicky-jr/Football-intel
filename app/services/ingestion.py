@@ -195,13 +195,19 @@ class IngestionOrchestrator:
                     return
                 try:
                     snapshot = self.inventory.record_markets(event, markets)
-                    if self.store is not None:
-                        self.store.record_snapshot(snapshot, scan_id)
                 except Exception as exc:
                     report.failures.append(
                         ScanFailure("inventory", event.source_event_id, f"{type(exc).__name__}: {exc}")
                     )
                     return
+                if self.store is not None:
+                    try:
+                        self.store.record_snapshot(snapshot, scan_id)
+                    except Exception as exc:
+                        report.failures.append(
+                            ScanFailure("persistence", event.source_event_id, f"{type(exc).__name__}: {exc}")
+                        )
+                        return
                 report.events_scanned += 1
                 report.market_snapshots_recorded += 1
                 report.markets_received += len(snapshot.markets)
