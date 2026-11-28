@@ -6,6 +6,9 @@ from app.models import AnalysisRequest, AnalysisResponse
 from app.services.analysis import analyze_fixture
 from app.services.sqlite_store import SQLiteMarketStore
 from app.services.market_movement import summarize_odds_movement
+from app.services.market_taxonomy import MarketTaxonomyRegistry
+
+market_taxonomy = MarketTaxonomyRegistry()
 
 market_store = SQLiteMarketStore(
     os.getenv("FOOTBALL_INTEL_DB_PATH", "data/football_intel.sqlite3")
@@ -36,6 +39,17 @@ def health():
     return {"status": "ok", "storage": "sqlite"}
 
 
+@app.get("/api/v1/taxonomy/definitions")
+def taxonomy_definitions():
+    """List the canonical market vocabulary currently supported."""
+    return {
+        "taxonomy_version": "1.0",
+        "definitions": market_taxonomy.definitions(),
+        "provider_mappings_loaded": 0,
+        "note": "Only explicitly verified provider mappings may classify source markets.",
+    }
+
+
 @app.get("/api/v1/coverage")
 def coverage():
     """Return persisted market-observation coverage by provider."""
@@ -61,6 +75,56 @@ def event_market_snapshots(
         "snapshots": market_store.snapshots_for_event(
             provider_id, source_event_id, limit=limit
         ),
+    }
+
+
+@app.get(
+    "/api/v1/providers/{provider_id}/events/{source_event_id}/taxonomy"
+)
+def event_market_taxonomy(
+    provider_id: str,
+    source_event_id: str,
+    limit: int = Query(default=1, ge=1, le=500),
+):
+    """Show conservative canonical classifications for captured event markets."""
+    snapshots = market_store.snapshots_for_event(provider_id, source_event_id, limit=limit)
+    latest = snapshots[0] if snapshots else None
+    results = []
+    for market in (latest or {}).get("markets", []):
+        source = {
+            "provider": market.get("provider", provider_id),
+            "source_event_id": market.get("source_event_id", source_event_id),
+            "source_market_id": market.get("source_market_id"),
+            "name": market.get("name", ""),
+            "period": market.get("period"),
+            "line": market.get("line"),
+            "status": market.get("status"),
+            "selections": [],
+        }
+        from app.providers.base import ProviderMarket, ProviderSelection
+        source["selections"] = [
+            ProviderSelection(
+                item.get("source_selection_id"),
+                item.get("name", ""),
+                item.get("odds_decimal"),
+                item.get("participant"),
+                item.get("raw") or {},
+            )
+            for item in market.get("selections", [])
+        ]
+        provider_market = ProviderMarket(**source)
+        results.append({
+            "source_market_id": provider_market.source_market_id,
+            "source_market_name": provider_market.name,
+            "source_period": provider_market.period,
+            "source_line": provider_market.line,
+            "classification": market_taxonomy.classify(provider_market),
+        })
+    return {
+        "provider": provider_id,
+        "source_event_id": source_event_id,
+        "captured_at": latest.get("captured_at") if latest else None,
+        "markets": results,
     }
 
 
