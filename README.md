@@ -1,61 +1,112 @@
 # Football Intel
 
-Football Intel is an experimental, bookmaker-agnostic, multi-sport market-analysis and intelligence application.
+Football Intel is an experimental, bookmaker-agnostic, multi-sport market-analysis and
+sports-intelligence platform. It is being developed as a research product, not as a
+guaranteed-betting or automated wagering service.
 
 ## Product mission
 
-Football Intel aims to study both real-sport betting markets and bookmaker-hosted proprietary games—including virtual sports, instant virtuals, crash games, wheels, dice and other game families—across providers and formats that can lawfully and reliably be researched. It will turn timestamped observations into explainable research, comparisons and carefully evaluated model outputs.
+The platform aims to study real sports markets and bookmaker-hosted proprietary games
+(virtual sports, crash games, wheels, dice and other formats) using authorised data,
+published rules and reproducible analysis. It preserves original source observations,
+builds a common market vocabulary, evaluates models chronologically and reports
+uncertainty rather than manufacturing confidence.
 
-The system does not claim access to bookmakers' private source code or internal trading algorithms. It studies observable odds, market states, price movements and historical outcomes, then tests behavioural hypotheses against evidence.
+The system does not claim access to bookmakers' private source code, trading models or
+random-number generators. Historical independent random outcomes are not a reliable way
+to predict the next independent outcome.
 
-## Product scope
+## Current capability foundations
 
-The target is to discover and analyse the complete market inventory actually offered for each event by every successfully connected and verified bookmaker—not just Football.com, not just football, and not a hard-coded shortlist of familiar bets.
+- **Provider-neutral ingestion:** provider registry, bounded async discovery, partial
+  failure reporting and timestamped SQLite market snapshots. No live bookmaker feed is
+  currently verified or connected.
+- **Market identity:** versioned canonical definitions and explicit provider mappings.
+  Unknown markets remain unclassified; there are no production bookmaker mappings loaded.
+- **Settlement rules:** persistent, versioned rule profiles and semantic comparison.
+  Profiles submitted through the API are stored as unverified; official evidence review
+  is required before they can support comparisons.
+- **Cross-provider events:** candidate matching uses sport, participants, competition
+  and kickoff time. Ambiguous matches require review; global event linking is not yet a
+  durable approved workflow.
+- **Odds research:** decimal odds, reciprocal implied probabilities, best available
+  quoted price and proportional no-vig normalisation. Overround is shown only when a
+  complete mutually exclusive outcome set is attested.
+- **Historical evidence:** event results retain source name, URL, timestamp, verification
+  status and correction lineage. User-submitted API results are not marked verified.
+- **Market movement and alerts:** historical selection prices, threshold alert rules,
+  cooldown deduplication and stored alert events. Push/email/mobile notification delivery
+  is not implemented yet.
+- **Model evaluation:** chronological leakage checks, multiclass Brier score, log loss
+  and expected calibration error. No production-trained or calibrated model is claimed.
+- **Bookmaker behaviour:** descriptive summaries of observed price changes, suspensions,
+  first-observed mover share and follow-on behaviour, with sample-size gates.
+- **Bet-slip intelligence:** reconstructs explicit selection/odds lines from OCR text
+  supplied by a caller. It does not currently perform OCR on image bytes.
+- **Responsible-gambling controls:** configured single-stake, daily-stake, exposure,
+  daily-loss, self-exclusion and cooling-off checks, plus a user-entered risk ledger.
+  The ledger is not connected to bookmaker accounts.
+- **Proprietary-game laboratory:** sample outcome frequencies, observed payout/stake
+  ratios, published RTP context and a SHA-256 seed-commitment consistency check.
+  Full game-outcome verification requires each game's published algorithm and inputs.
+- **Specialist research interface:** evidence-gated specialist assessments, conflict
+  reporting and abstention. Actual specialist AI models/agents have not been deployed.
+- **Confidence and analyst workspace:** transparent evidence-readiness scoring, local
+  projects, evidence-linked notes and watchlists. Authentication and tenant isolation
+  are still required before multi-user public deployment.
 
-The system is being designed for a catalogue of 100,000+ distinct market/selection definitions across sports, bookmakers, competitions and event types. That does not mean every option exists on every event. The app must enumerate the exact live inventory returned by each provider and preserve all selections, lines, periods and settlement details.
+See [the complete capability notes](docs/feature-suite.md), [market taxonomy](docs/market-taxonomy.md),
+[settlement rules](docs/settlement-rules.md), [data quality](docs/data-quality.md) and
+[the development roadmap](docs/development-roadmap.md).
 
-Operators explicitly in scope include 1xBet and PariPesa/Paripesa, plus popular regional and international bookmakers. The provider registry will be extensible. Actual integrations depend on authorised data access and verification.
+## Running locally
 
-## Intelligence capabilities (target architecture)
+Python 3.11 or 3.12 is exercised in CI.
 
-- Global multi-sport and multi-bookmaker market discovery.
-- Proprietary bookmaker-game catalogue and game-specific statistical research.
-- Virtual sports, instant games, crash/wheel mechanics and published fairness-rule analysis.
-- Timestamped odds and market-state history.
-- Cross-book price comparison and movement timelines.
-- Observable bookmaker behaviour profiles.
-- Sports/event/market pattern research.
-- Evidence-grounded conversational intelligence with explicit uncertainty.
-- Market-specific models with backtesting and calibration.
-- Coverage, freshness, model-performance and data-quality reporting.
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
 
-See [the global bookmaker and market coverage strategy](docs/bookmaker-coverage.md), [the intelligence architecture](docs/intelligence-architecture.md), and [the development roadmap](docs/development-roadmap.md).
+Open `/docs` for the interactive API reference. The default SQLite database is
+`data/football_intel.sqlite3`. Set `FOOTBALL_INTEL_DB_PATH` to choose another path.
+The `data/` directory and SQLite database files are excluded from Git.
 
-## Current implementation status
+## API groups
 
-- FastAPI application with interactive API documentation.
-- Health endpoint and experimental match-analysis endpoint.
-- Provider-neutral event/market/selection contracts.
-- Provider registry and loss-aware in-memory market inventory.
-- Optional SQLite persistence for scan runs, provider events and timestamped market snapshots.
-- API endpoints for persisted coverage and recent scan history.
-- Global multi-sport/provider discovery requirements documented.
-- Intelligence architecture and phased development roadmap documented.
-- No bookmaker feeds or live market ingestion connected yet.
-- No validated bookmaker behaviour profiles, proprietary-game research engine or evidence-grounded assistant yet.
+- `/api/v1/coverage`, `/api/v1/scans`: ingestion coverage and scan history.
+- `/api/v1/taxonomy/definitions`: canonical market definitions.
+- `/api/v1/settlement-rules`: settlement profiles.
+- `/api/v1/events/match`: candidate cross-provider event matching.
+- `/api/v1/odds/compare`: comparable quote calculations.
+- `/api/v1/models/backtest`: chronological forecast evaluation.
+- `/api/v1/alerts`: price alert rules, evaluations and alert history.
+- `/api/v1/bet-slips/reconstruct`: reconstruction from supplied OCR text.
+- `/api/v1/risk`: configured risk checks and user-entered records.
+- `/api/v1/games`: proprietary-game descriptive research.
+- `/api/v1/bookmakers/behaviour`: observable behaviour summaries.
+- `/api/v1/intelligence`: specialist aggregation and evidence confidence.
+- `/api/v1/results`: historical result records.
+- `/api/v1/workspaces`: local analyst projects, notes and watchlists.
 
-## Local storage
+## Important production limitations
 
-The default SQLite database is created at `data/football_intel.sqlite3`. Set `FOOTBALL_INTEL_DB_PATH` to use another path. The `data/` directory and SQLite database files are excluded from Git.
+No bookmaker feed or live result provider is currently verified. The first Sportradar
+transport is only a thin authenticated HTTP foundation; route availability, entitlements,
+regional coverage, terms, storage rights and redistribution rights must be confirmed
+before a production adapter is declared integrated.
 
-The ingestion orchestrator accepts a `SQLiteMarketStore` instance. When one is supplied, it records scan history, provider event observations, every market snapshot (including unclassified markets), and partial failures. SQLite is intended for local development and an early single-instance deployment; a managed PostgreSQL backend is the planned production direction for concurrent workers and larger data volumes.
+The API is an engineering MVP and is not production-secure for public multi-user use.
+Before deployment it needs authentication, role-based access control, tenant isolation,
+secret management, rate limiting, audit trails, privacy/retention controls, backups,
+monitoring and security review. Analyst workspace and user-entered risk records are
+currently local storage foundations, not secure account services.
 
-## Important limitations
+A native OCR/image upload service, push notifications, deployed specialist AI models,
+an immutable model registry, walk-forward training pipelines, live bookmaker adapters
+and production settlement verification remain future integration work. API request
+flags and user-provided material are not themselves proof that a source or rule is true.
 
-The current prediction endpoint is an experimental baseline, not a validated betting model. It uses supplied averages and does not yet collect fixtures, team news, injuries, lineups, historical results, bookmaker prices or live market inventories. No bookmaker is currently marked as integrated. The application does not identify guaranteed bets.
-
-Bookmaker and proprietary-game insights will be based on observable, timestamped data and published rules—not claims to have reverse-engineered private algorithms or RNGs. Historical random outcomes cannot reliably predict the next independent random outcome. Coverage and conclusions will be limited to providers, markets, periods and data quality we can verify.
-
-## Tests
-
-Run `pytest` after installing requirements in a Python 3.10+ environment. SQLite uses Python's standard library and adds no third-party dependency.
+No guaranteed-win, guaranteed-profit, risk-free or next-RNG-outcome claims are made.

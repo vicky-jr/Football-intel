@@ -1,116 +1,78 @@
 # Football Intel development roadmap
 
-## Scope
+## Completed foundations
 
-The target includes real-sport bookmaker/market intelligence AND bookmaker-hosted proprietary-game intelligence (virtual sports, instant virtuals, crash, wheel, dice and other game families), across providers and game types that can lawfully and reliably be researched. Football is the first real-sport implementation vertical; a representative virtual/instant game should be the first proprietary-game pilot. Football is the first implementation vertical to keep delivery manageable; the architecture remains sport-neutral from day one.
+- [x] FastAPI application, experimental user-supplied-statistics analysis and CI.
+- [x] Provider-neutral contracts, registry, bounded ingestion and partial failure reports.
+- [x] SQLite scan history, event records, raw market snapshots and coverage summaries.
+- [x] Historical selection price movement.
+- [x] Versioned canonical market vocabulary with conservative explicit mapping.
+- [x] Provider-source freshness separated from collection recency.
+- [x] Persistent settlement profiles and settlement parity comparison.
+- [x] Cross-provider event candidate matching with ambiguity states.
+- [x] Historical result records with source provenance and correction lineage.
+- [x] Decimal odds, implied probabilities, best price, overround and proportional no-vig.
+- [x] Chronological model evaluation with Brier, log loss and calibration error.
+- [x] Threshold alerts, persisted alert rules, event history and cooldown deduplication.
+- [x] OCR-text bet-slip reconstruction and verification-required output.
+- [x] Responsible-gambling limit checks and user-entered exposure ledger.
+- [x] Proprietary-game sample analysis and seed-commitment consistency check.
+- [x] Specialist evidence aggregation and confidence/abstention gate.
+- [x] Observable bookmaker behaviour summaries.
+- [x] Local analyst projects, evidence-linked notes and watchlists.
+- [x] Python 3.11/3.12 automated test suite.
 
-## Phase 0 — Foundation and architecture (current)
+## Next build priorities
 
-- [x] FastAPI foundation and experimental match-analysis endpoint.
-- [x] Provider-neutral event/market/selection contracts.
-- [x] Provider registry and loss-aware in-memory market inventory.
-- [x] Global multi-sport/provider discovery requirements.
-- [x] Intelligence architecture and phased roadmap documented.
-- [ ] Run the existing test suite in a reproducible environment.
-- [ ] Decide database and migration strategy.
+### 1. Verified live data
+- Verify Sportradar routes, plan entitlement, available bookmakers, market packages,
+  regions, polling cadence, historical access and storage/display rights.
+- Identify direct bookmaker feeds only where authorised.
+- Build one live provider end-to-end with exact coverage and freshness reporting.
+- Preserve raw responses, provider timestamps, request IDs, pagination cursors and
+  rate-limit information.
 
-Exit: architecture documented, tests run, persistence decision recorded.
+### 2. Identity and taxonomy operations
+- Persist canonical provider-to-market mapping decisions with reviewer, evidence,
+  version and change history.
+- Build a global event-link candidate queue and human approval workflow.
+- Resolve team/player aliases, competition IDs, neutral venues and event reschedules.
+- Compare only fully aligned market/selection definitions and verified settlement rules.
 
-## Phase 1 — Reliable ingestion and historical snapshots
+### 3. Historical intelligence and alerts
+- Collect synchronized prices, market states, event results and settlement outcomes.
+- Add line movement, movement velocity, volatility and suspension/reopening analysis.
+- Add scheduled alert polling and push/email delivery with retry and quiet hours.
+- Build bookmaker behaviour reports with uncertainty intervals and cadence correction.
 
-- Implement an ingestion orchestrator over the existing provider protocol, registry and inventory.
-- Discover provider books, sports, competitions and events.
-- Enumerate every market and selection returned for each event and entitled package.
-- Persist raw payload references, normalized records and timestamped odds/state observations.
-- Record partial scans, failures, rate limits, staleness and provider health.
-- Add idempotency, bounded retries and provider-respecting polling.
-- Add mock-provider tests for pagination, partial failure, duplicate delivery, unknown markets and state changes.
+### 4. Models and AI research
+- Create immutable point-in-time feature snapshots and a versioned model registry.
+- Build sport/market-specific baselines and walk-forward evaluation.
+- Add probability calibration, subgroup metrics, drift monitoring and independent review.
+- Deploy specialist agents only when their data scope and performance are validated.
+- Add evidence retrieval, source citations and numeric consistency checks to the assistant.
 
-Exit: a mock provider scans end-to-end; every returned market/selection survives ingestion; snapshots and coverage are queryable; failures are visible.
+### 5. Bet-slip and proprietary games
+- Add secure image intake and a supported OCR service.
+- Implement event/market resolution for parsed slip lines and manual correction.
+- Select one permitted proprietary-game pilot with published rules and versioned results.
+- Add sample-size aware distribution tests and complete provably-fair verification where
+  the provider publishes all required inputs and algorithms.
 
-## Phase 2 — First authorised live data source
-
-- Confirm commercial access, API key, region, book list, sports, competitions and package entitlements.
-- Evaluate the planned Sportradar Odds Comparison v2 source, but verify current API routes and account entitlements before coding endpoint assumptions.
-- Verify one sport, competition and selected events end-to-end before expanding.
-- Measure whether 1xBet and PariPesa/Paripesa are actually included; add direct authorised adapters only where permitted and needed.
-- Confirm polling limits, update cadence, historical access, storage rights and end-user display/redistribution rights.
-
-Exit: at least one live integration is tested against real responses and its exact coverage/limitations are reported.
-
-## Phase 3 — Market normalization and cross-book matching
-
-- Build a versioned canonical taxonomy while retaining source labels and settlement rules.
-- Match events across providers with confidence scores and manual review for ambiguity.
-- Compare selections only when sport, event, participant, period, line, selection and settlement terms align.
-- Add odds conversion, implied probability, overround and comparable-price calculations.
-- Preserve unknown definitions and provide a classification workflow.
-
-Exit: comparisons contain only genuinely comparable prices and explain unmatched items.
-
-## Phase 4 — Market movement intelligence
-
-- Calculate price deltas, percentage changes, line movement, movement velocity, volatility and suspension/reopening transitions.
-- Compare synchronized observations while accounting for provider cadence and missing data.
-- Detect unusual movement using transparent thresholds and baselines.
-- Build event timelines and alerts with source timestamps and freshness.
-- Keep observed movement separate from causal explanations.
-
-Exit: users can inspect a sourced timeline and reproduce every calculation from stored observations.
-
-## Phase 5 — Bookmaker behaviour profiles
-
-- Build profiles segmented by sport, competition and market family.
-- Measure first-observed mover share, follow-on rates/lags, price-change frequency/magnitude, dispersion and suspension behaviour.
-- State monitored providers, cadence, sample size, uncertainty and missingness.
-- Describe observable behaviour only; do not claim proprietary algorithm reverse-engineering.
-- Evaluate closing prices against outcomes and baselines where valid.
-
-Exit: each profile metric has a documented definition, data sufficiency rule and reproducible calculation.
-
-## Phase 6 — Sports/market research and predictive models
-
-- Establish sport-specific event, participant and outcome datasets.
-- Build simple baselines before machine learning.
-- Add market-family-specific models only when data and sample sizes justify them.
-- Use chronological holdouts, leakage checks, calibration and appropriate market-specific benchmarks.
-- Track model versions, drift, subgroup performance and negative results.
-- Keep unsupported markets visible but marked not modelled.
-
-Exit: every user-facing model has a model card, evaluation report and defined supported scope.
-
-## Phase 7 — Evidence-grounded AI research assistant
-
-- Retrieve observations, bookmaker profiles, market timelines and evaluation reports.
-- Require answers to show evidence IDs, dates, sample sizes and freshness.
-- Separate facts, hypotheses and validated findings.
-- Support insufficient-evidence and conflicting-evidence answers.
-- Evaluate factual faithfulness and numeric consistency against the database.
-- Prevent invented odds, provider coverage, proprietary algorithm details or unsupported probabilities.
-
-Exit: answers are traceable to stored evidence and abstain when data is missing.
-
-## Phase 8 — Proprietary bookmaker games intelligence\n- Build a separate game catalogue for operator-hosted virtual sports, instant games, crash games, wheels, dice and other supported formats.\n- Record game provider/studio, version, rules, modes, payout tables, round IDs, results and timestamps.\n- Start with one permitted pilot game whose rules and result history are accessible; document exact collection limits.\n- Implement game-specific statistical tests: outcome frequencies, distributions, independence/serial-dependence checks, payout/house-edge calculations where rules permit, and provably-fair verification only where independently checkable data is published.\n- Compare observed outcomes with the published mechanics; report sample size, uncertainty, changes in game version and anomalies without claiming that anomalies prove manipulation.\n- Explicitly prevent the assistant from presenting past random outcomes as a reliable way to predict the next independent round.\n\nExit: one game family has a documented ruleset, traceable historical dataset, reproducible statistical report and clear limits on what can and cannot be inferred.\n\n## Phase 9 — Multi-sport expansion and product hardening
-
-- Add sports one at a time based on data access, demand and research readiness.
-- Validate each sport's event model, market taxonomy and settlement conventions.
-- Expand provider coverage region by region, including Nigeria/Africa and international operators where authorised.
-- Add mobile-friendly dashboard, alerts, accounts, access controls, monitoring, backups and incident response.
-- Review local legal, licensing, age, advertising and responsible-gambling requirements before public launch.
-
-Exit: each added sport/provider has verified coverage, monitoring and documented limitations.
+### 6. Product security and delivery
+- Add authentication, RBAC, tenant isolation, secrets management and audit trails.
+- Move production data to PostgreSQL with migrations, backups and retention.
+- Add monitoring, incident response, API quotas and privacy controls.
+- Build the analyst workspace UI and notification preferences.
+- Validate legal, age, advertising and responsible-gambling requirements by jurisdiction.
 
 ## Release gates
 
-- No live integration claim without a successful verified scan.
-- No complete-inventory claim unless the source confirms enumeration for that event snapshot.
-- No movement claim without source and retrieval timestamps.
-- No bookmaker-behaviour claim without monitored set, time window and sample size.
-- No model probability without supported model, inputs, version and uncertainty.
-- No cross-book comparison across different settlement definitions.
-- No user-facing finding without reproducible calculations and review.
+- No live integration claim without a verified successful scan and data-rights review.
+- No automatic event link when candidate identity is ambiguous.
+- No cross-book price comparison without a canonical market and verified settlement parity.
+- No source-fresh claim when provider freshness is unknown.
+- No model probability without supported inputs, version, evaluation and uncertainty.
+- No assistant claim without traceable source evidence.
+- No claims to predict independent random outcomes.
 - No guaranteed-win, guaranteed-profit or risk-free language.
-
-## Immediate next engineering task
-
-Implement the Phase 1 sports-data ingestion orchestrator and mock-provider tests using the existing provider protocol, ProviderRegistry and MarketInventory. In parallel, design the separate proprietary-game catalogue and select a permitted pilot game for a later phase. Keep work on feat/football-intel-foundation. Do not connect a live provider until current API routes, account entitlements and data rights are confirmed.
