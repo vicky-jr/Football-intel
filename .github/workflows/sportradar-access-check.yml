@@ -1,0 +1,35 @@
+name: Check Sportradar account access
+
+on:
+  workflow_dispatch:
+    inputs:
+      access_level:
+        description: Sportradar environment provisioned for this API key
+        required: true
+        type: choice
+        default: trial
+        options:
+          - trial
+          - production
+
+permissions:
+  contents: read
+
+jobs:
+  access-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SPORTRADAR_ODDS_API_KEY: ${{ secrets.SPORTRADAR_ODDS_API_KEY }}
+      SPORTRADAR_ACCESS_LEVEL: ${{ inputs.access_level }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Check authenticated Sportradar access
+        run: python scripts/check_sportradar_access.py

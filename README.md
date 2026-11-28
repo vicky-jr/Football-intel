@@ -80,10 +80,23 @@ Open `/docs` for the interactive API reference. Screenshot OCR uses Pillow and p
 `data/football_intel.sqlite3`. Set `FOOTBALL_INTEL_DB_PATH` to choose another path.
 The `data/` directory and SQLite database files are excluded from Git.
 
+## Verify Sportradar account access from GitHub
+
+1. Obtain an Odds Comparison API key directly from Sportradar.
+2. In GitHub, open **Settings → Secrets and variables → Actions**.
+3. Create a repository secret named `SPORTRADAR_ODDS_API_KEY` and paste the key there—not into a source file, issue, commit or ChatGPT message.
+4. Open the **Actions** tab, select **Check Sportradar account access**, choose the provisioned access level, and run the workflow.
+5. Inspect the run summary for authentication status, `X-Origin-Id` access tier and visible catalogue counts.
+
+The check makes only Books and Sports discovery requests. It does not collect event odds or
+print detailed bookmaker catalogues. OC Core access is enabled by Sportradar Support and
+must not be assumed from the presence of an API key.
+
 ## First authorised Sportradar scan
 
 The Prematch adapter follows the documented Odds Comparison v2 feeds. It runs only when
-a server-side API key is configured. Credentials are never stored in Git.
+a server-side API key is configured. Credentials are never stored in Git. The access-check
+workflow above is the recommended first validation before running a scoped collection.
 
 ```bash
 export SPORTRADAR_ODDS_API_KEY="your-server-side-key"
