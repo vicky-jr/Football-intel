@@ -10,6 +10,7 @@ from app.services.market_movement import summarize_odds_movement
 from app.services.market_taxonomy import MarketTaxonomyRegistry
 from app.services.data_quality import assess_market_freshness
 from app.services.settlement_rules import SettlementRuleRegistry, compare_settlement_profiles
+from app.api.features import router as feature_router
 
 market_taxonomy = MarketTaxonomyRegistry()
 settlement_rule_registry = SettlementRuleRegistry()
@@ -26,6 +27,9 @@ app = FastAPI(
     ),
     version="0.2.0",
 )
+
+
+app.include_router(feature_router)
 
 
 @app.get("/")
