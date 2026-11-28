@@ -39,3 +39,13 @@ def test_persisted_alert_rule_and_workspace_api():
  note=client.post(f"/api/v1/workspaces/projects/{project.json()['project_id']}/notes",
      json={"title":"Evidence","body":"Review source","evidence_ids":["source-1"]})
  assert note.status_code==200
+
+def test_alert_rule_can_be_disabled_and_mismatched_scope_is_rejected():
+ owner="alert-api-"+str(uuid4())
+ rule=client.post("/api/v1/alerts/rules",json={"owner_id":owner,"provider_id":"book-a",
+      "comparable_market_key":"event-a:market-a","threshold_percent":2}).json()
+ mismatch=client.post(f"/api/v1/alerts/rules/{rule['rule_id']}/evaluate",json={
+      "provider_id":"book-b","history":[]})
+ assert mismatch.status_code==422
+ disabled=client.post(f"/api/v1/alerts/rules/{rule['rule_id']}/enabled",json={"enabled":False})
+ assert disabled.status_code==200 and disabled.json()["enabled"] is False

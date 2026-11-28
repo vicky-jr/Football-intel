@@ -50,8 +50,9 @@ def feature_catalogue():
             "historical results with provenance and correction history",
             "decimal odds comparison, implied probabilities and overround",
             "chronological backtesting and calibration metrics",
-            "threshold-based market movement alerts",
-            "OCR-text bet-slip reconstruction",
+            "persisted threshold alert rules, cooldowns and alert history",
+            "optional Tesseract screenshot OCR and OCR-text bet-slip reconstruction",
+            "persistent versioned settlement-rule profiles",
             "responsible-gambling exposure checks and user-entered risk ledger",
             "proprietary-game descriptive research and seed commitment check",
             "specialist evidence aggregation interface",
@@ -61,7 +62,7 @@ def feature_catalogue():
         ],
         "integration_gaps": [
             "verified live bookmaker feeds and official result sources",
-            "native image OCR service and secure image upload",
+            "host-installed Tesseract runtime, OCR language tuning and consent workflow",
             "deployed specialist models or LLM agents",
             "notification delivery and persisted alert preferences",
             "user authentication and tenant isolation",
@@ -79,7 +80,7 @@ def cross_provider_event_match(payload: dict[str, Any]):
             review_threshold=float(payload.get("review_threshold", 0.72)),
             kickoff_tolerance_minutes=int(payload.get("kickoff_tolerance_minutes", 180)),
         )
-    except (KeyError, ValueError) as exc:
+    except (KeyError, TypeError, ValueError) as exc:
         raise _bad_request(ValueError(str(exc))) from exc
 
 
@@ -133,6 +134,10 @@ def list_market_alert_rules(owner_id: str):
 def evaluate_persisted_alert_rule(rule_id: str, payload: dict[str, Any]):
     try:
         rule = alert_store.get_rule(rule_id)
+        if payload.get("provider_id") not in (None, rule["provider_id"]):
+            raise ValueError("provider_id does not match the saved alert rule")
+        if payload.get("comparable_market_key") not in (None, rule["comparable_market_key"]):
+            raise ValueError("comparable_market_key does not match the saved alert rule")
         evaluation = evaluate_price_alert(
             payload.get("history", []),
             threshold_percent=rule["threshold_percent"],
@@ -391,8 +396,10 @@ def add_analyst_watchlist_item(project_id: str, payload: dict[str, Any]):
         return workspace_store.add_watchlist_item(
             project_id, payload["item_key"], payload["item_type"], payload["label"]
         )
-    except (KeyError, ValueError) as exc:
-        raise _bad_request(ValueError(str(exc))) from exc
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
 
 
 @router.get("/workspaces/projects/{project_id}/watchlist")

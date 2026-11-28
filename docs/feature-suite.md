@@ -49,10 +49,10 @@ endpoint remains an experimental user-input baseline.
 
 ## 5. Market intelligence and alerts
 
-Implemented: price movement trigger evaluation, persisted alert rules, alert history
-and cooldown deduplication.
+Implemented: price movement trigger evaluation, provider/market-scoped persisted
+alert rules, enable/disable controls, cooldown deduplication and alert history.
 
-Remaining: alert scheduling, provider polling, persisted last-seen checkpoints,
+Remaining: scheduled evaluation, provider polling, persisted last-seen checkpoints,
 notification delivery (push/email), per-user channels, quiet hours, retry/dead-letter
 handling and alert performance metrics.
 

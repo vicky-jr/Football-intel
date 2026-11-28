@@ -61,6 +61,8 @@ class AnalystWorkspaceStore:
         return [{**dict(x),"evidence_ids":json.loads(x["evidence_ids_json"])} for x in rows]
     def add_watchlist_item(self,project_id:str,item_key:str,item_type:str,label:str)->dict[str,Any]:
         with self._connection() as db:
+            if not db.execute("SELECT 1 FROM analyst_projects WHERE project_id=?",(project_id,)).fetchone():
+                raise KeyError("project not found")
             db.execute("INSERT OR REPLACE INTO analyst_watchlist(project_id,item_key,item_type,label) VALUES(?,?,?,?)",
                        (project_id,item_key,item_type,label))
         return {"project_id":project_id,"item_key":item_key,"item_type":item_type,"label":label}

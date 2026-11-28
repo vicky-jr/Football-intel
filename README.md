@@ -85,7 +85,7 @@ The `data/` directory and SQLite database files are excluded from Git.
 - `/api/v1/events/match`: candidate cross-provider event matching.
 - `/api/v1/odds/compare`: comparable quote calculations.
 - `/api/v1/models/backtest`: chronological forecast evaluation.
-- `/api/v1/alerts`: price alert rules, evaluations and alert history.
+- `/api/v1/alerts`: persistent price alert rules, cooldown evaluation, enable/disable and alert history.
 - `/api/v1/bet-slips/ocr`, `/api/v1/bet-slips/reconstruct`: screenshot OCR and supplied-text reconstruction.
 - `/api/v1/risk`: configured risk checks and user-entered records.
 - `/api/v1/games`: proprietary-game descriptive research.
