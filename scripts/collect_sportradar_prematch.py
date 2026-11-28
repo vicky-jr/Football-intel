@@ -10,8 +10,16 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
+import sys
 from dataclasses import asdict
 from datetime import datetime, timezone
+from pathlib import Path
+
+# Support direct execution as "python scripts/collect_sportradar_prematch.py".
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.providers.registry import ProviderRegistry
 from app.providers.sportradar import provider_from_environment
@@ -22,7 +30,8 @@ from app.services.sqlite_store import SQLiteMarketStore
 
 async def run(scan_date: str) -> dict:
     provider = provider_from_environment()
-    store = SQLiteMarketStore()
+    database_path = os.getenv("FOOTBALL_INTEL_DB_PATH", "data/football_intel.sqlite3")
+    store = SQLiteMarketStore(database_path)
     orchestrator = IngestionOrchestrator(
         ProviderRegistry([provider]),
         MarketInventory(),
@@ -44,7 +53,8 @@ async def run(scan_date: str) -> dict:
             },
             "access_tier": provider.access_tier,
             "access_origin_id": provider.access_origin_id,
-            "configured_book_count": len(provider._books_cache or []),
+            "configured_book_count": provider.configured_book_count,
+            "database_path": database_path,
             "limitations": [
                 "The scan covers only this API key's configured bookmakers and the Prematch package.",
                 "OC Core must be enabled by Sportradar Support for global-core coverage.",

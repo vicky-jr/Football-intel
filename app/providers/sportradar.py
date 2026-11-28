@@ -197,6 +197,11 @@ class SportradarPrematchProvider:
         self.access_tier: str | None = None
         self.access_origin_id: str | None = None
 
+    @property
+    def configured_book_count(self) -> int | None:
+        """Number of bookmaker records returned by the current authenticated Books feed."""
+        return len(self._books_cache) if self._books_cache is not None else None
+
     async def list_books(self) -> list[dict[str, Any]]:
         if self._books_cache is None:
             feed = await self.client.get_feed_response("books.json")

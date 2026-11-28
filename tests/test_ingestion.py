@@ -123,3 +123,29 @@ def test_scan_rejects_invalid_concurrency_and_retry_configuration():
         assert "max_retries" in str(exc)
     else:
         raise AssertionError("expected negative retries to be rejected")
+
+
+def test_stage_based_sports_are_reported_as_coverage_warnings():
+    class StageSportProvider(MockProvider):
+        async def list_sports(self):
+            return [
+                {"id": "golf", "name": "Golf", "type": "stage"},
+                {"id": "football", "name": "Football", "type": "competition"},
+            ]
+
+        async def list_competitions(self, sport_id):
+            assert sport_id == "football"
+            return [{"id": "league-1", "name": "Test League"}]
+
+    provider = StageSportProvider()
+    orchestrator, inventory = make_orchestrator(provider)
+    report = asyncio.run(
+        orchestrator.scan("mock", "2026-11-28", package="standard")
+    )
+
+    assert report.events_scanned == 2
+    assert report.coverage_warnings
+    assert "Stage-based sport Golf" in report.coverage_warnings[0]
+    assert not report.complete
+    # The stage sport was not incorrectly sent to the competition endpoint.
+    assert len(inventory.snapshots_for_event("mock", "event-1")) == 1
