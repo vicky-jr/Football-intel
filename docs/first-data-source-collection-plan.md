@@ -60,8 +60,8 @@ The collection service and analysis service remain separate. Ingestion stores th
 ## First milestone acceptance criteria
 - API key is configured without being committed.
 - Books, Sports and Competition discovery can be fetched and stored.
-- One selected event can be traced from schedule to all available market packages.
-- Every returned market and outcome is persisted, including unknown market types.
+- One selected event can be traced from schedule to the available Prematch market board.
+- Every returned Prematch market/book/outcome instance is persisted, including unknown market types.
 - Snapshot timestamps and source identifiers are retained.
 - A coverage report shows exactly what was and was not returned.
 - No predictions are generated for markets without a suitable model and inputs.

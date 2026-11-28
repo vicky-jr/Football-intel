@@ -40,7 +40,7 @@ Seed discovery examples include 1xBet, PariPesa/Paripesa, SportyBet, Bet9ja, Bet
 
 ## Data access and compliance
 
-Use official APIs, licensed odds/data feeds, or other access methods expressly permitted by the provider's terms and applicable law. Do not bypass logins, bot protections, geographic restrictions, paywalls or other access controls. A provider is not marked integrated until the adapter has been tested against live returned data and its market coverage measured.
+Use official APIs, licensed odds/data feeds, or other access methods expressly permitted by the provider's terms and applicable law. Do not bypass logins, bot protections, geographic restrictions, paywalls or other access controls. A provider is not marked live-integrated until the adapter has been tested against live returned data and its market coverage measured. Passing mocked adapter tests verifies parsing and workflow behaviour, not real account access or commercial entitlement.
 
 ## Data model
 

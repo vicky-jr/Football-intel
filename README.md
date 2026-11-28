@@ -19,8 +19,11 @@ to predict the next independent outcome.
 ## Current capability foundations
 
 - **Provider-neutral ingestion:** provider registry, bounded async discovery, partial
-  failure reporting and timestamped SQLite market snapshots. No live bookmaker feed is
-  currently verified or connected.
+  failure/coverage-warning reporting and timestamped SQLite market snapshots.
+- **Sportradar Prematch adapter:** documented v2 Books, Sports, Competition, Schedule
+  and Event Markets feed integration, pagination metadata, access-tier detection,
+  bookmaker-specific market snapshots and a mock end-to-end test. The connector is
+  implemented but no live API key or authorised live scan has yet been verified.
 - **Market identity:** versioned canonical definitions and explicit provider mappings.
   Unknown markets remain unclassified; there are no production bookmaker mappings loaded.
 - **Settlement rules:** persistent, versioned rule profiles and semantic comparison.
@@ -113,10 +116,12 @@ The script stores event and bookmaker-specific market snapshots in local SQLite.
 
 ## Important production limitations
 
-No bookmaker feed or live result provider is currently verified. The first Sportradar
-transport is only a thin authenticated HTTP foundation; route availability, entitlements,
-regional coverage, terms, storage rights and redistribution rights must be confirmed
-before a production adapter is declared integrated.
+No bookmaker feed or live result provider is currently verified. The Sportradar Prematch adapter has been implemented and tested using mocked API
+responses, but it has not yet completed a live authenticated scan. Account entitlements,
+the X-Origin-Id access tier, regional bookmaker coverage, terms, storage rights and
+redistribution rights must be confirmed before it is described as a live integrated source.
+The current event adapter handles competition-based sports; stage-based sports are
+reported as coverage warnings until their stage-specific schedule workflow is implemented.
 
 The API is an engineering MVP and is not production-secure for public multi-user use.
 Before deployment it needs authentication, role-based access control, tenant isolation,
