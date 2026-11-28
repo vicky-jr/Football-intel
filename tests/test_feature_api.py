@@ -8,7 +8,7 @@ def test_feature_catalogue_exposes_the_requested_foundations():
  r=client.get("/api/v1/features")
  assert r.status_code==200
  assert "cross-provider event candidate matching" in r.json()["implemented_foundations"]
- assert "native image OCR service and secure image upload" in r.json()["integration_gaps"]
+ assert "host-installed Tesseract runtime, OCR language tuning and consent workflow" in r.json()["integration_gaps"]
 
 def test_event_matching_and_odds_comparison_api():
  left={"provider":"a","source_event_id":"1","sport":"football","competition":"league",
