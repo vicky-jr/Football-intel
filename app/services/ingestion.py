@@ -175,25 +175,29 @@ class IngestionOrchestrator:
             return report
 
         competitions: list[tuple[str, str]] = []
+        discovered_competition_ids: set[str] = set()
         for sport in sports:
-            sport_type = str(sport.get("type") or "competition").casefold()
-            if sport_type == "stage":
-                report.coverage_warnings.append(
-                    f"Stage-based sport {sport.get('name') or sport.get('id')} is not yet supported by the Prematch event-schedule adapter."
-                )
-                continue
-            if sport_type != "competition":
-                report.coverage_warnings.append(
-                    f"Unknown sport catalogue type '{sport_type}' for {sport.get('name') or sport.get('id')}; skipped safely."
-                )
-                continue
             try:
                 sport_id = self._source_id(sport, scope="sport")
             except ValueError as exc:
                 report.failures.append(ScanFailure("competitions", "unknown-sport", str(exc)))
                 continue
+
             if selected_sports and sport_id not in selected_sports:
                 continue
+
+            sport_type = str(sport.get("type") or "competition").casefold()
+            if sport_type == "stage":
+                report.coverage_warnings.append(
+                    f"Stage-based sport {sport.get('name') or sport_id} is not yet supported by the Prematch event-schedule adapter."
+                )
+                continue
+            if sport_type != "competition":
+                report.coverage_warnings.append(
+                    f"Unknown sport catalogue type '{sport_type}' for {sport.get('name') or sport_id}; skipped safely."
+                )
+                continue
+
             items = await discover(
                 "competitions",
                 sport_id,
@@ -206,19 +210,19 @@ class IngestionOrchestrator:
                     scan_id, provider.provider_id, "competitions", sport_id,
                     package, items, datetime.now(timezone.utc).isoformat(),
                 )
+
             for item in items:
                 try:
                     competition_id = self._source_id(item, scope="competition")
                 except ValueError as exc:
                     report.failures.append(ScanFailure("events", sport_id, str(exc)))
                     continue
+                discovered_competition_ids.add(competition_id)
                 if selected_competitions and competition_id not in selected_competitions:
                     continue
                 if item.get("markets") is False:
                     continue
                 competitions.append((sport_id, competition_id))
-                except ValueError as exc:
-                    report.failures.append(ScanFailure("events", sport_id, str(exc)))
 
         if selected_sports:
             discovered_sport_ids = {
@@ -229,24 +233,13 @@ class IngestionOrchestrator:
                 report.coverage_warnings.append(
                     f"Requested sport ID was not present in this provider catalogue: {missing}"
                 )
+
         if selected_competitions:
-            discovered_competition_ids = {
-                str(item.get("source_id"))
-                for item in (
-                    self.store.discovery_inventory(
-                        provider=provider.provider_id, stage="competitions", limit=5000
-                    ) if self.store is not None else []
-                )
-            }
-            if not discovered_competition_ids:
-                # The in-memory path tracks competitions during the current scan.
-                discovered_competition_ids = {
-                    competition_id for _, competition_id in competitions
-                }
             for missing in sorted(selected_competitions - discovered_competition_ids):
                 report.coverage_warnings.append(
                     f"Requested competition ID was not present in this provider catalogue: {missing}"
                 )
+
         report.competitions_discovered = len(competitions)
         events_by_key: dict[tuple[str, str], ProviderEvent] = {}
         for sport_id, competition_id in competitions:
