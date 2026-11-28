@@ -72,6 +72,24 @@ class SQLiteMarketStore:
                     message TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS provider_discovery_items (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    scan_id TEXT NOT NULL REFERENCES scan_runs(scan_id) ON DELETE CASCADE,
+                    provider TEXT NOT NULL,
+                    stage TEXT NOT NULL,
+                    scope TEXT NOT NULL,
+                    package TEXT NOT NULL,
+                    source_id TEXT,
+                    name TEXT,
+                    captured_at TEXT NOT NULL,
+                    raw_json TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_provider_discovery_scan
+                    ON provider_discovery_items(scan_id, stage, scope);
+                CREATE INDEX IF NOT EXISTS idx_provider_discovery_lookup
+                    ON provider_discovery_items(provider, stage, captured_at);
+
                 CREATE TABLE IF NOT EXISTS provider_events (
                     provider TEXT NOT NULL,
                     source_event_id TEXT NOT NULL,
@@ -126,6 +144,95 @@ class SQLiteMarketStore:
                 """,
                 (scan_id, provider, scan_date, package, started_at),
             )
+
+    def record_discovery_items(
+        self,
+        scan_id: str,
+        provider: str,
+        stage: str,
+        scope: str,
+        package: str,
+        items: list[dict[str, Any]],
+        captured_at: str,
+    ) -> None:
+        """Persist exact Books/Sports/Competition discovery results for audit and coverage."""
+        if stage not in {"books", "sports", "competitions"}:
+            raise ValueError("stage must be books, sports or competitions")
+        if not provider.strip() or not scope.strip() or not package.strip():
+            raise ValueError("provider, scope and package are required")
+        if not captured_at.strip():
+            raise ValueError("captured_at is required")
+        rows = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            source_id = item.get("id") or item.get("source_id")
+            rows.append((
+                scan_id, provider, stage, scope, package,
+                str(source_id) if source_id is not None else None,
+                str(item.get("name") or item.get("label") or "") or None,
+                captured_at, self._json(item),
+            ))
+        if rows:
+            with self._connection() as connection:
+                connection.executemany(
+                    """
+                    INSERT INTO provider_discovery_items
+                        (scan_id, provider, stage, scope, package, source_id,
+                         name, captured_at, raw_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    rows,
+                )
+
+    def discovery_inventory(
+        self,
+        *,
+        provider: str | None = None,
+        stage: str | None = None,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        """Return persisted raw discovery items, newest first."""
+        if not 1 <= limit <= 5000:
+            raise ValueError("limit must be between 1 and 5000")
+        if stage is not None and stage not in {"books", "sports", "competitions"}:
+            raise ValueError("stage must be books, sports or competitions")
+        clauses = []
+        parameters: list[Any] = []
+        if provider:
+            clauses.append("provider = ?")
+            parameters.append(provider)
+        if stage:
+            clauses.append("stage = ?")
+            parameters.append(stage)
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        parameters.append(limit)
+        with self._connection() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT scan_id, provider, stage, scope, package, source_id,
+                       name, captured_at, raw_json
+                FROM provider_discovery_items
+                {where}
+                ORDER BY captured_at DESC, id DESC
+                LIMIT ?
+                """,
+                parameters,
+            ).fetchall()
+        return [
+            {
+                "scan_id": row["scan_id"],
+                "provider": row["provider"],
+                "stage": row["stage"],
+                "scope": row["scope"],
+                "package": row["package"],
+                "source_id": row["source_id"],
+                "name": row["name"],
+                "captured_at": row["captured_at"],
+                "raw": json.loads(row["raw_json"]),
+            }
+            for row in rows
+        ]
 
     def record_event(self, event: ProviderEvent, seen_at: str) -> None:
         with self._connection() as connection:

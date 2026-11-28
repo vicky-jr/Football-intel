@@ -167,3 +167,39 @@ def test_bookmaker_specific_price_history_requires_book_filter_when_ambiguous(tm
     assert len(filtered) == 1
     assert filtered[0]["source_book_id"] == "book-b"
     assert filtered[0]["odds_decimal"] == 1.9
+
+
+def test_discovery_inventory_persists_exact_provider_catalogue_payloads(tmp_path):
+    store = SQLiteMarketStore(tmp_path / "discovery.sqlite3")
+    store.start_scan(
+        "scan-discovery", "sportradar-prematch", "2026-11-28", "prematch",
+        "2026-11-28T10:00:00+00:00",
+    )
+    store.record_discovery_items(
+        "scan-discovery", "sportradar-prematch", "books", "sportradar-prematch",
+        "prematch",
+        [{"id": "sr:book:7", "name": "Book Seven", "country": "NG"}],
+        "2026-11-28T10:00:01+00:00",
+    )
+    store.record_discovery_items(
+        "scan-discovery", "sportradar-prematch", "competitions", "sr:sport:1",
+        "prematch",
+        [{"id": "sr:competition:17", "name": "Premier League", "markets": True}],
+        "2026-11-28T10:00:02+00:00",
+    )
+    reopened = SQLiteMarketStore(tmp_path / "discovery.sqlite3")
+    books = reopened.discovery_inventory(provider="sportradar-prematch", stage="books")
+    competitions = reopened.discovery_inventory(stage="competitions")
+    assert books[0]["source_id"] == "sr:book:7"
+    assert books[0]["raw"]["country"] == "NG"
+    assert competitions[0]["raw"]["markets"] is True
+    assert books[0]["scan_id"] == "scan-discovery"
+
+
+def test_discovery_inventory_validates_stage_and_limit(tmp_path):
+    import pytest
+    store = SQLiteMarketStore(tmp_path / "discovery-validation.sqlite3")
+    with pytest.raises(ValueError, match="stage must"):
+        store.discovery_inventory(stage="events")
+    with pytest.raises(ValueError, match="limit"):
+        store.discovery_inventory(limit=0)

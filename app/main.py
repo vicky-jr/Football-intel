@@ -124,6 +124,23 @@ def sportradar_integration_status():
     }
 
 
+@app.get("/api/v1/discovery/inventory")
+def discovery_inventory(
+    provider_id: str | None = None,
+    stage: str | None = None,
+    limit: int = Query(default=500, ge=1, le=5000),
+):
+    """Return the raw Books/Sports/Competitions inventory discovered by provider scans."""
+    try:
+        return {
+            "items": market_store.discovery_inventory(
+                provider=provider_id, stage=stage, limit=limit
+            )
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @app.get("/api/v1/coverage")
 def coverage():
     """Return persisted market-observation coverage by provider."""

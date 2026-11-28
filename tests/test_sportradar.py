@@ -217,6 +217,12 @@ def test_full_mock_sportradar_scan_persists_book_specific_prices(tmp_path):
     assert report.events_discovered==1 and report.events_scanned==1
     assert report.markets_received==1 and report.selections_received==3
     assert provider.access_tier=="oc_core"
+    books = store.discovery_inventory(provider="sportradar-prematch", stage="books")
+    sports = store.discovery_inventory(provider="sportradar-prematch", stage="sports")
+    competitions = store.discovery_inventory(provider="sportradar-prematch", stage="competitions")
+    assert books[0]["source_id"] == "sr:book:7"
+    assert sports[0]["source_id"] == "sr:sport:1"
+    assert competitions[0]["source_id"] == "sr:competition:17"
     snapshots=store.snapshots_for_event("sportradar-prematch","sr:sport_event:77")
     assert len(snapshots)==1
     market=snapshots[0]["markets"][0]

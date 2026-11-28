@@ -149,10 +149,20 @@ class IngestionOrchestrator:
         books = await discover("books", provider.provider_id, provider.list_books)
         if books is not None:
             report.books_discovered = len(books)
+            if self.store is not None:
+                self.store.record_discovery_items(
+                    scan_id, provider.provider_id, "books", provider.provider_id,
+                    package, books, datetime.now(timezone.utc).isoformat(),
+                )
 
         sports = await discover("sports", provider.provider_id, provider.list_sports)
         if sports is not None:
             report.sports_discovered = len(sports)
+            if self.store is not None:
+                self.store.record_discovery_items(
+                    scan_id, provider.provider_id, "sports", provider.provider_id,
+                    package, sports, datetime.now(timezone.utc).isoformat(),
+                )
 
         if sports is None:
             finish()
@@ -183,6 +193,11 @@ class IngestionOrchestrator:
             )
             if items is None:
                 continue
+            if self.store is not None:
+                self.store.record_discovery_items(
+                    scan_id, provider.provider_id, "competitions", sport_id,
+                    package, items, datetime.now(timezone.utc).isoformat(),
+                )
             for item in items:
                 if item.get("markets") is False:
                     continue
