@@ -6,9 +6,50 @@ from fastapi import APIRouter, HTTPException, Query
 from app.providers.bookmaker_directory import BookmakerDirectory
 
 router = APIRouter(prefix="/api/v1/bookmakers", tags=["bookmakers"])
+_market_store = None
+
+
+def configure_market_store(store) -> None:
+    """Inject the application's shared market store for discovery lookups."""
+    global _market_store
+    _market_store = store
+
+
 bookmaker_directory = BookmakerDirectory(
     database_path=os.getenv("FOOTBALL_INTEL_DB_PATH", "data/football_intel.sqlite3")
 )
+
+
+@router.get("/discovery/suggested-links")
+def suggested_bookmaker_source_links(
+    provider_id: str | None = Query(default=None, min_length=1, max_length=100),
+    limit: int = Query(default=5000, ge=1, le=5000),
+):
+    """Suggest exact-name matches for provider books; never auto-links identities."""
+    if _market_store is None:
+        raise HTTPException(status_code=503, detail="market discovery store is not configured")
+    items = _market_store.discovery_inventory(
+        provider=provider_id, stage="books", limit=limit
+    )
+    # Inventory is newest-first. Use only the latest observed label for each
+    # provider-native ID; do not let old display names create duplicate suggestions.
+    latest = {}
+    for item in items:
+        key = (item.get("provider"), item.get("source_id") or item.get("name"))
+        if key not in latest:
+            latest[key] = item
+    suggestions = bookmaker_directory.suggest_source_identity_matches(latest.values())
+    counts = {}
+    for suggestion in suggestions:
+        state = suggestion["suggestion_status"]
+        counts[state] = counts.get(state, 0) + 1
+    return {
+        "provider_filter": provider_id,
+        "source_books_considered": len(suggestions),
+        "suggestion_counts": counts,
+        "suggestions": suggestions,
+        "note": "Exact normalized-name matches are suggestions only. Review evidence and create a source identity link through a trusted administrative workflow.",
+    }
 
 
 @router.get("/summary")

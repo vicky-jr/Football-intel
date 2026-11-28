@@ -11,12 +11,13 @@ from app.services.market_taxonomy import MarketTaxonomyRegistry
 from app.services.data_quality import assess_market_freshness
 from app.services.settlement_rules import compare_settlement_profiles
 from app.api.features import router as feature_router, settlement_rule_registry
-from app.api.bookmakers import router as bookmaker_router
+from app.api.bookmakers import router as bookmaker_router, configure_market_store
 
 market_taxonomy = MarketTaxonomyRegistry()
 market_store = SQLiteMarketStore(
     os.getenv("FOOTBALL_INTEL_DB_PATH", "data/football_intel.sqlite3")
 )
+configure_market_store(market_store)
 
 app = FastAPI(
     title="Football Intel API",

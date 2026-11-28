@@ -6,7 +6,9 @@ source-identity links and verification states across application restarts.
 """
 from dataclasses import asdict, dataclass
 import json
+import re
 import sqlite3
+import unicodedata
 from pathlib import Path
 from typing import Iterable
 
@@ -555,3 +557,49 @@ class BookmakerDirectory:
                     ).fetchall()
             links = [self._source_link_from_row(row) for row in rows]
         return [asdict(link) for link in links]
+
+
+    @staticmethod
+    def _normalize_source_name(value: str) -> str:
+        normalized = unicodedata.normalize("NFKD", value).casefold()
+        return "".join(character for character in normalized if character.isalnum())
+
+    def suggest_source_identity_matches(
+        self, source_items: Iterable[dict]
+    ) -> list[dict]:
+        """Suggest exact normalized-name matches; never create or verify links."""
+        name_index: dict[str, set[str]] = {}
+        for profile in self._all_profiles():
+            for name in (profile.display_name, *profile.aliases):
+                key = self._normalize_source_name(name)
+                if key:
+                    name_index.setdefault(key, set()).add(profile.operator_id)
+
+        suggestions: list[dict] = []
+        for item in source_items:
+            if not isinstance(item, dict):
+                continue
+            source_name = str(item.get("name") or item.get("label") or "").strip()
+            source_id = item.get("source_id")
+            provider_id = item.get("provider")
+            normalized_name = self._normalize_source_name(source_name)
+            candidates = sorted(name_index.get(normalized_name, set())) if normalized_name else []
+            if len(candidates) == 1:
+                state = "exact_name_candidate"
+            elif len(candidates) > 1:
+                state = "ambiguous"
+            elif source_name:
+                state = "unmatched"
+            else:
+                state = "missing_name"
+            suggestions.append({
+                "provider_id": provider_id,
+                "source_book_id": str(source_id) if source_id is not None else None,
+                "source_book_name": source_name or None,
+                "suggestion_status": state,
+                "candidate_operator_ids": candidates,
+                "match_method": "normalized_exact_name" if candidates else None,
+                "last_seen_at": item.get("captured_at"),
+                "review_required": True,
+            })
+        return suggestions

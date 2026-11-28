@@ -197,3 +197,37 @@ def test_source_identity_link_rejects_duplicate_and_invalid_evidence_url():
         assert "HTTP(S) URL" in str(exc)
     else:
         raise AssertionError("verified evidence must have a valid URL")
+
+
+def test_source_identity_suggestions_only_use_exact_normalized_names():
+    directory = BookmakerDirectory(profiles=[
+        BookmakerProfile("bet365", "bet365"),
+        BookmakerProfile("sportybet", "SportyBet", aliases=("sporty bet",)),
+        BookmakerProfile("1xbet", "1xBet"),
+    ])
+    suggestions = directory.suggest_source_identity_matches([
+        {"provider": "feed-x", "source_id": "id-1", "name": "BET 365"},
+        {"provider": "feed-x", "source_id": "id-2", "name": "Sporty Bet"},
+        {"provider": "feed-x", "source_id": "id-3", "name": "1xBet Official"},
+        {"provider": "feed-x", "source_id": "id-4", "name": "Unknown Operator"},
+    ])
+    assert suggestions[0]["candidate_operator_ids"] == ["bet365"]
+    assert suggestions[0]["suggestion_status"] == "exact_name_candidate"
+    assert suggestions[1]["candidate_operator_ids"] == ["sportybet"]
+    assert suggestions[1]["suggestion_status"] == "exact_name_candidate"
+    assert suggestions[2]["suggestion_status"] == "unmatched"
+    assert suggestions[3]["suggestion_status"] == "unmatched"
+    assert all(item["review_required"] for item in suggestions)
+    assert directory.list_source_links() == []
+
+
+def test_source_identity_suggestions_flag_ambiguous_names():
+    directory = BookmakerDirectory(profiles=[
+        BookmakerProfile("brand-one", "Brand One", aliases=("shared name",)),
+        BookmakerProfile("brand-two", "Brand Two", aliases=("shared name",)),
+    ])
+    suggestion = directory.suggest_source_identity_matches([
+        {"provider": "feed-x", "source_id": "amb-1", "name": "Shared Name"},
+    ])[0]
+    assert suggestion["suggestion_status"] == "ambiguous"
+    assert suggestion["candidate_operator_ids"] == ["brand-one", "brand-two"]

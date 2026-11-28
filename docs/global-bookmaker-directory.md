@@ -64,3 +64,15 @@ The next step is a source entitlement and capability matrix: each data feed shou
 declare what sports, regions, event types, market families, game products and
 prematch/live packages it actually returns. Coverage must be measured at that
 granularity instead of inherited from the bookmaker's name.
+
+
+## Suggested identity matching
+
+`GET /api/v1/bookmakers/discovery/suggested-links` compares the latest discovered
+provider Books inventory with bookmaker display names and aliases. It uses normalized
+exact-name matching only. Potential matches remain suggestions, ambiguous names are
+flagged, and fuzzy/unmatched names are not silently assigned. Suggestions are not
+persisted as source links and are not used in price comparisons until a trusted
+review process records and verifies the association.
+
+An optional `provider_id` query parameter narrows suggestions to one source feed.
