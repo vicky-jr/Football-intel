@@ -149,3 +149,48 @@ def test_stage_based_sports_are_reported_as_coverage_warnings():
     assert not report.complete
     # The stage sport was not incorrectly sent to the competition endpoint.
     assert len(inventory.snapshots_for_event("mock", "event-1")) == 1
+
+
+def test_scan_can_be_scoped_to_sport_and_competition():
+    class MultiCompetitionProvider(MockProvider):
+        def __init__(self):
+            super().__init__()
+            self.competition_calls = []
+
+        async def list_competitions(self, sport_id):
+            self.competition_calls.append(sport_id)
+            return [
+                {"id": "league-1", "name": "Test League", "markets": True},
+                {"id": "league-2", "name": "Other League", "markets": True},
+            ]
+
+        async def list_events(self, competition_id, date):
+            if competition_id == "league-2":
+                return []
+            return await super().list_events(competition_id, date)
+
+    provider = MultiCompetitionProvider()
+    orchestrator, inventory = make_orchestrator(provider)
+    report = asyncio.run(
+        orchestrator.scan(
+            "mock", "2026-11-28", package="standard",
+            sport_ids={"football"}, competition_ids={"league-1"},
+        )
+    )
+    assert report.complete
+    assert provider.competition_calls == ["football"]
+    assert report.competitions_discovered == 1
+    assert report.events_scanned == 2
+
+
+def test_scan_reports_unknown_requested_sport_as_coverage_warning():
+    provider = MockProvider()
+    orchestrator, _ = make_orchestrator(provider)
+    report = asyncio.run(
+        orchestrator.scan(
+            "mock", "2026-11-28", package="standard", sport_ids={"unknown-sport"}
+        )
+    )
+    assert not report.complete
+    assert report.events_discovered == 0
+    assert any("not present in this provider catalogue" in item for item in report.coverage_warnings)

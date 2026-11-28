@@ -64,6 +64,7 @@ The collection service and analysis service remain separate. Ingestion stores th
 - Every returned Prematch market/book/outcome instance is persisted, including unknown market types.
 - Snapshot timestamps and source identifiers are retained.
 - A coverage report shows exactly what was and was not returned.
+- The raw discovery inventory shows exactly which bookmaker IDs/names and competition IDs the key exposed.
 - No predictions are generated for markets without a suitable model and inputs.
 
 ## Commercial and regional checks before choosing production

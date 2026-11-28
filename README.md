@@ -88,17 +88,20 @@ a server-side API key is configured. Credentials are never stored in Git.
 ```bash
 export SPORTRADAR_ODDS_API_KEY="your-server-side-key"
 export SPORTRADAR_ACCESS_LEVEL="trial"
-python scripts/collect_sportradar_prematch.py 2026-11-28
+python scripts/collect_sportradar_prematch.py 2026-11-28 --sport-id "sr:sport:1" --competition-id "sr:competition:17"
 ```
 
 Use `production` only when the account is provisioned for production. The scan reports
 the `X-Origin-Id` access tier and bookmaker count returned by that key. An `oc_us`
 response is not global-core access; OC Core must be enabled by Sportradar Support.
-The script stores event and bookmaker-specific market snapshots in local SQLite.
+The script stores raw Books/Sports/Competition discovery inventory, event records and
+bookmaker-specific market snapshots in local SQLite. The sport and competition filters
+are optional; use IDs returned by the discovery feed rather than guessing them.
 
 ## API groups
 
 - `/api/v1/coverage`, `/api/v1/scans`: ingestion coverage and scan history.
+- `/api/v1/discovery/inventory`: raw Books, Sports and Competition discovery catalogue.
 - `/api/v1/integrations/sportradar/status`: local credential configuration status (no provider call).
 - `/api/v1/taxonomy/definitions`: canonical market definitions.
 - `/api/v1/settlement-rules`: settlement profiles.

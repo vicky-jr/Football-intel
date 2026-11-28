@@ -120,8 +120,14 @@ class IngestionOrchestrator:
         scan_date: str,
         *,
         package: str = "default",
+        sport_ids: set[str] | None = None,
+        competition_ids: set[str] | None = None,
     ) -> IngestionReport:
         provider: OddsProvider = self.registry.get(provider_id)
+        selected_sports = {str(value).strip() for value in sport_ids or set()}
+        selected_competitions = {str(value).strip() for value in competition_ids or set()}
+        if any(not value for value in selected_sports | selected_competitions):
+            raise ValueError("sport and competition filters cannot contain blank IDs")
         started = datetime.now(timezone.utc)
         scan_id = str(uuid.uuid4())
         report = IngestionReport(
@@ -186,6 +192,8 @@ class IngestionOrchestrator:
             except ValueError as exc:
                 report.failures.append(ScanFailure("competitions", "unknown-sport", str(exc)))
                 continue
+            if selected_sports and sport_id not in selected_sports:
+                continue
             items = await discover(
                 "competitions",
                 sport_id,
@@ -199,13 +207,46 @@ class IngestionOrchestrator:
                     package, items, datetime.now(timezone.utc).isoformat(),
                 )
             for item in items:
+                try:
+                    competition_id = self._source_id(item, scope="competition")
+                except ValueError as exc:
+                    report.failures.append(ScanFailure("events", sport_id, str(exc)))
+                    continue
+                if selected_competitions and competition_id not in selected_competitions:
+                    continue
                 if item.get("markets") is False:
                     continue
-                try:
-                    competitions.append((sport_id, self._source_id(item, scope="competition")))
+                competitions.append((sport_id, competition_id))
                 except ValueError as exc:
                     report.failures.append(ScanFailure("events", sport_id, str(exc)))
 
+        if selected_sports:
+            discovered_sport_ids = {
+                str(item.get("id") or item.get("source_id"))
+                for item in sports if item.get("id") or item.get("source_id")
+            }
+            for missing in sorted(selected_sports - discovered_sport_ids):
+                report.coverage_warnings.append(
+                    f"Requested sport ID was not present in this provider catalogue: {missing}"
+                )
+        if selected_competitions:
+            discovered_competition_ids = {
+                str(item.get("source_id"))
+                for item in (
+                    self.store.discovery_inventory(
+                        provider=provider.provider_id, stage="competitions", limit=5000
+                    ) if self.store is not None else []
+                )
+            }
+            if not discovered_competition_ids:
+                # The in-memory path tracks competitions during the current scan.
+                discovered_competition_ids = {
+                    competition_id for _, competition_id in competitions
+                }
+            for missing in sorted(selected_competitions - discovered_competition_ids):
+                report.coverage_warnings.append(
+                    f"Requested competition ID was not present in this provider catalogue: {missing}"
+                )
         report.competitions_discovered = len(competitions)
         events_by_key: dict[tuple[str, str], ProviderEvent] = {}
         for sport_id, competition_id in competitions:

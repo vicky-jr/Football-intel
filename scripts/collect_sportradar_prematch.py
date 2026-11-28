@@ -28,7 +28,12 @@ from app.services.market_inventory import MarketInventory
 from app.services.sqlite_store import SQLiteMarketStore
 
 
-async def run(scan_date: str) -> dict:
+async def run(
+    scan_date: str,
+    *,
+    sport_ids: list[str] | None = None,
+    competition_ids: list[str] | None = None,
+) -> dict:
     provider = provider_from_environment()
     database_path = os.getenv("FOOTBALL_INTEL_DB_PATH", "data/football_intel.sqlite3")
     store = SQLiteMarketStore(database_path)
@@ -42,7 +47,11 @@ async def run(scan_date: str) -> dict:
     )
     try:
         report = await orchestrator.scan(
-            provider.provider_id, scan_date, package="prematch"
+            provider.provider_id,
+            scan_date,
+            package="prematch",
+            sport_ids=set(sport_ids or []) or None,
+            competition_ids=set(competition_ids or []) or None,
         )
         return {
             "report": {
@@ -74,9 +83,23 @@ def main() -> None:
         default=datetime.now(timezone.utc).date().isoformat(),
         help="UTC date in YYYY-MM-DD format (the source schedule spans this date and the next)",
     )
+    parser.add_argument(
+        "--sport-id",
+        action="append",
+        dest="sport_ids",
+        help="Limit collection to this provider sport ID; may be repeated.",
+    )
+    parser.add_argument(
+        "--competition-id",
+        action="append",
+        dest="competition_ids",
+        help="Limit collection to this provider competition ID; may be repeated.",
+    )
     args = parser.parse_args()
     datetime.strptime(args.scan_date, "%Y-%m-%d")
-    result = asyncio.run(run(args.scan_date))
+    result = asyncio.run(
+        run(args.scan_date, sport_ids=args.sport_ids, competition_ids=args.competition_ids)
+    )
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
 
 
