@@ -262,6 +262,7 @@ def test_source_book_coverage_reports_observed_provider_book_inventory(tmp_path)
     assert observed["events_observed"] == 1
     assert observed["market_observations"] == 2
     assert observed["selections_received"] == 3
+    assert observed["packages_observed"] == ["prematch"]
     assert observed["sports_observed"] == ["basketball"]
     assert observed["competitions_observed"] == ["league-a"]
 

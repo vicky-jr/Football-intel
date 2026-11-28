@@ -200,7 +200,7 @@ class SQLiteMarketStore:
         clauses = []
         parameters: list[Any] = []
         if provider:
-            clauses.append("provider = ?")
+            clauses.append("ms.provider = ?")
             parameters.append(provider)
         if stage:
             clauses.append("stage = ?")
@@ -503,10 +503,12 @@ class SQLiteMarketStore:
         with self._connection() as connection:
             rows = connection.execute(
                 f"""
-                SELECT id, provider, source_event_id, captured_at, markets_json
-                FROM market_snapshots
+                SELECT ms.id, ms.provider, ms.source_event_id, ms.captured_at,
+                       ms.markets_json, sr.package
+                FROM market_snapshots AS ms
+                LEFT JOIN scan_runs AS sr ON sr.scan_id = ms.scan_id
                 {where}
-                ORDER BY captured_at DESC, id DESC
+                ORDER BY ms.captured_at DESC, ms.id DESC
                 """,
                 parameters,
             ).fetchall()
@@ -541,9 +543,14 @@ class SQLiteMarketStore:
                     "last_captured_at": row["captured_at"],
                     "sports": set(),
                     "competitions": set(),
+                    "packages": set(),
+                    "market_observations": 0,
                 })
                 stats["snapshot_ids"].add(row["id"])
                 stats["event_ids"].add(row["source_event_id"])
+                stats["market_observations"] += 1
+                if row["package"]:
+                    stats["packages"].add(row["package"])
                 if not stats["source_book_name"] and market.get("source_book_name"):
                     stats["source_book_name"] = market["source_book_name"]
                 stats["market_observations"] += 1
@@ -566,6 +573,7 @@ class SQLiteMarketStore:
                 "events_observed": len(stats["event_ids"]),
                 "market_observations": stats["market_observations"],
                 "distinct_market_names": len(stats["market_names"]),
+                "packages_observed": sorted(stats["packages"]),
                 "market_names_observed": sorted(stats["market_names"]),
                 "selections_received": stats["selections_received"],
                 "sports_observed": sorted(stats["sports"]),
