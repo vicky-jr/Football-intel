@@ -9,8 +9,10 @@ from app.services.sqlite_store import SQLiteMarketStore
 from app.services.market_movement import summarize_odds_movement
 from app.services.market_taxonomy import MarketTaxonomyRegistry
 from app.services.data_quality import assess_market_freshness
+from app.services.settlement_rules import SettlementRuleRegistry, compare_settlement_profiles
 
 market_taxonomy = MarketTaxonomyRegistry()
+settlement_rule_registry = SettlementRuleRegistry()
 
 market_store = SQLiteMarketStore(
     os.getenv("FOOTBALL_INTEL_DB_PATH", "data/football_intel.sqlite3")
@@ -39,6 +41,31 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "ok", "storage": "sqlite"}
+
+
+@app.get("/api/v1/settlement-rules")
+def settlement_rule_profiles():
+    """List bookmaker settlement profiles that have been explicitly registered."""
+    profiles = settlement_rule_registry.list_profiles()
+    return {
+        "profiles": profiles,
+        "verified_profile_count": sum(
+            item["verification_status"] == "verified" for item in profiles
+        ),
+        "note": "No bookmaker settlement profile is pre-verified; official rule evidence is required.",
+    }
+
+
+@app.get("/api/v1/settlement-rules/compare")
+def compare_settlement_rules(left_profile_id: str, right_profile_id: str):
+    """Compare two registered bookmaker settlement profiles."""
+    from fastapi import HTTPException
+    try:
+        left = settlement_rule_registry.get(left_profile_id)
+        right = settlement_rule_registry.get(right_profile_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return compare_settlement_profiles(left, right)
 
 
 @app.get("/api/v1/taxonomy/definitions")
