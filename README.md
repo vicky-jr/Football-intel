@@ -4,7 +4,7 @@ Football Intel is an experimental, bookmaker-agnostic, multi-sport market-analys
 
 ## Product mission
 
-Football Intel aims to study both observable bookmaker pricing behaviour and sports-market behaviour across all sports, providers and market types that can be lawfully and reliably accessed. It will turn timestamped observations into explainable research, comparisons and carefully evaluated model outputs.
+Football Intel aims to study both real-sport betting markets and bookmaker-hosted proprietary games—including virtual sports, instant virtuals, crash games, wheels, dice and other game families—across providers and formats that can lawfully and reliably be researched. It will turn timestamped observations into explainable research, comparisons and carefully evaluated model outputs.
 
 The system does not claim access to bookmakers' private source code or internal trading algorithms. It studies observable odds, market states, price movements and historical outcomes, then tests behavioural hypotheses against evidence.
 
@@ -18,7 +18,7 @@ Operators explicitly in scope include 1xBet and PariPesa/Paripesa, plus popular 
 
 ## Intelligence capabilities (target architecture)
 
-- Global multi-sport and multi-bookmaker market discovery.
+- Global multi-sport and multi-bookmaker market discovery.\n- Proprietary bookmaker-game catalogue and game-specific statistical research.\n- Virtual sports, instant games, crash/wheel mechanics and published fairness-rule analysis.
 - Timestamped odds and market-state history.
 - Cross-book price comparison and movement timelines.
 - Observable bookmaker behaviour profiles.
@@ -38,13 +38,13 @@ See [the global bookmaker and market coverage strategy](docs/bookmaker-coverage.
 - Global multi-sport/provider discovery requirements documented.
 - Intelligence architecture and phased development roadmap documented.
 - No bookmaker feeds or live market ingestion connected yet.
-- No persistent historical odds database, validated bookmaker behaviour profiles or evidence-grounded assistant yet.
+- No persistent historical odds/game-results database, validated bookmaker behaviour profiles, proprietary-game research engine or evidence-grounded assistant yet.
 
 ## Important limitations
 
 The current prediction endpoint is an experimental baseline, not a validated betting model. It uses supplied averages and does not yet collect fixtures, team news, injuries, lineups, historical results, bookmaker prices or live market inventories. No bookmaker is currently marked as integrated. The application does not identify guaranteed bets.
 
-Bookmaker behaviour insights will be based on observable, timestamped data—not claims to have reverse-engineered proprietary internal algorithms. Coverage and conclusions will be limited to providers, markets, periods and data quality we can verify.
+Bookmaker and proprietary-game insights will be based on observable, timestamped data and published rules—not claims to have reverse-engineered private algorithms or RNGs. Historical random outcomes cannot reliably predict the next independent random outcome. Coverage and conclusions will be limited to providers, markets, periods and data quality we can verify.
 
 ## Tests
 

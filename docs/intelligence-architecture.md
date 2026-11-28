@@ -2,7 +2,7 @@
 
 ## Mission
 
-Football Intel is a multi-sport, multi-bookmaker market-intelligence platform. It studies both observable bookmaker pricing behaviour and sports-event/market behaviour, then turns verified observations into explainable research and carefully evaluated model outputs.
+Football Intel is a multi-sport, multi-bookmaker market-intelligence platform. It studies (1) real-sport bookmaker pricing and sports-event behaviour, and (2) bookmaker-hosted proprietary games such as virtual sports, instant virtuals, crash games, wheels, dice and other game formats. It turns verified observations and published game rules into explainable research and carefully evaluated statistical outputs.
 
 We cannot infer a bookmaker's private source code, risk limits or internal trading algorithm merely from its public odds. We can study observable behaviour, formulate hypotheses and test them against timestamped evidence. Every conclusion must be labelled as an observation, hypothesis or validated finding.
 
@@ -43,6 +43,27 @@ Build empirical profiles from observable behaviour. Candidate measures:
 
 A first mover is only first among providers monitored at the relevant sampling cadence. Report coverage, sampling interval, missing observations and uncertainty. Sequence or correlation does not establish causation or access to private algorithms.
 
+### Proprietary bookmaker games intelligence
+Treat bookmaker-hosted games as a first-class product domain, separate from real-world sports betting. Maintain a game catalogue with operator, game title, studio/provider where disclosed, game family, version, jurisdiction, published rules, payout table, bet options, round identifiers, result history, timestamps and source provenance.
+
+Classify games by mechanics rather than marketing name:
+- virtual sports and scheduled simulated competitions;
+- instant virtual matches and rapid-round simulations;
+- crash/multiplier games;
+- wheel and segment games;
+- dice, coin-flip, card and number-draw games;
+- slots, table games and other RNG-based formats where research and data access are permitted.
+
+Use a distinct research adapter per game and source. Collect publicly available rules, payout tables, round/result histories and any official fairness-verification material. Where lawful and permitted, record observations from user-provided histories or authorised feeds. Do not automate account access or bypass controls. Store the game version and rules effective at the time of each observation because mechanics can change.
+
+Research methods depend on the game:
+- Virtual sports: analyse result frequencies, score distributions, team/participant effects described by the rules, sequence dependence, round cadence and whether historical records are consistent with published mechanics.
+- Crash games: analyse multiplier distributions, empirical tail probabilities, round-to-round dependence and disclosed provably-fair verification data when independently verifiable.
+- Wheels/dice/number games: compare observed outcome frequencies with the stated probability model and payout table, accounting for configured risk/segment modes.
+- Other games: derive a test plan from the official rules and independently documented mechanics before analysis.
+
+A large historical sample can test whether observations are consistent with a stated distribution; it cannot reveal a future random result or prove a hidden algorithm. If a game uses a properly implemented RNG with independent outcomes, past results do not provide a reliable next-result prediction. Distinguish statistical anomalies from evidence of manipulation, and do not allege either without rigorous independent verification. Calculate theoretical return-to-player/house edge only from complete and trustworthy rules and payout information; label assumptions clearly.
+
 ### Sports and market behaviour research
 Studies event/participant performance and market-specific historical patterns across supported sports. Each sport and market family needs its own definitions, data sufficiency checks, baselines and validation. Do not transfer a football model to basketball or a match-winner model to player props without separate evidence.
 
@@ -54,7 +75,7 @@ Answers from retrieved, versioned observations, research reports and model outpu
 
 ## Core data entities
 
-- Provider, provider entitlement, bookmaker, sport, competition and event.
+- Provider, provider entitlement, bookmaker, sport, competition and event.\n- GameStudio, ProprietaryGame, GameVersion, GameRuleset, GameMode and GameRound.\n- GameOutcomeObservation, PayoutTable, RNGVerificationRecord and GameResearchFinding.
 - Source event and canonical event with mapping confidence.
 - Source market and canonical market definition.
 - Source selection and canonical selection definition.
@@ -81,6 +102,6 @@ Segment each profile by sport, competition, market family and observation period
 8. Preserve failed experiments and negative results.
 9. Require review before promoting findings or models to users.
 
-## Safety, compliance and operations
+## Proprietary-game research integrity\nNever claim to know a private RNG seed, source code or future result unless a provider publishes a verifiable mechanism and the data genuinely permits verification. Do not present streaks, hot/cold numbers, apparent cycles or small-sample anomalies as winning systems. Clearly separate descriptive statistics, hypothesis tests and independently verified fairness results. Do not recommend chasing losses or escalating stakes.\n\n## Safety, compliance and operations
 
 Use official APIs, licensed feeds or methods expressly permitted by provider terms and law. Do not bypass logins, bot protections, geographic restrictions or paywalls. Keep credentials server-side, redact secrets, enforce least privilege, audit access and respect retention/display/redistribution rights. User-facing insights must avoid guaranteed-win or guaranteed-profit claims and include appropriate uncertainty and responsible-gambling safeguards.

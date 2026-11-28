@@ -2,7 +2,7 @@
 
 ## Scope
 
-The target is both bookmaker behaviour intelligence and sports/market behaviour intelligence, across all sports, providers and market types that can be lawfully and reliably accessed. Football is the first implementation vertical to keep delivery manageable; the architecture remains sport-neutral from day one.
+The target includes real-sport bookmaker/market intelligence AND bookmaker-hosted proprietary-game intelligence (virtual sports, instant virtuals, crash, wheel, dice and other game families), across providers and game types that can lawfully and reliably be researched. Football is the first real-sport implementation vertical; a representative virtual/instant game should be the first proprietary-game pilot. Football is the first implementation vertical to keep delivery manageable; the architecture remains sport-neutral from day one.
 
 ## Phase 0 — Foundation and architecture (current)
 
@@ -90,7 +90,7 @@ Exit: every user-facing model has a model card, evaluation report and defined su
 
 Exit: answers are traceable to stored evidence and abstain when data is missing.
 
-## Phase 8 — Multi-sport expansion and product hardening
+## Phase 8 — Proprietary bookmaker games intelligence\n- Build a separate game catalogue for operator-hosted virtual sports, instant games, crash games, wheels, dice and other supported formats.\n- Record game provider/studio, version, rules, modes, payout tables, round IDs, results and timestamps.\n- Start with one permitted pilot game whose rules and result history are accessible; document exact collection limits.\n- Implement game-specific statistical tests: outcome frequencies, distributions, independence/serial-dependence checks, payout/house-edge calculations where rules permit, and provably-fair verification only where independently checkable data is published.\n- Compare observed outcomes with the published mechanics; report sample size, uncertainty, changes in game version and anomalies without claiming that anomalies prove manipulation.\n- Explicitly prevent the assistant from presenting past random outcomes as a reliable way to predict the next independent round.\n\nExit: one game family has a documented ruleset, traceable historical dataset, reproducible statistical report and clear limits on what can and cannot be inferred.\n\n## Phase 9 — Multi-sport expansion and product hardening
 
 - Add sports one at a time based on data access, demand and research readiness.
 - Validate each sport's event model, market taxonomy and settlement conventions.
@@ -113,4 +113,4 @@ Exit: each added sport/provider has verified coverage, monitoring and documented
 
 ## Immediate next engineering task
 
-Implement the Phase 1 ingestion orchestrator and mock-provider tests using the existing provider protocol, ProviderRegistry and MarketInventory. Keep work on feat/football-intel-foundation. Do not connect a live provider until current API routes, account entitlements and data rights are confirmed.
+Implement the Phase 1 sports-data ingestion orchestrator and mock-provider tests using the existing provider protocol, ProviderRegistry and MarketInventory. In parallel, design the separate proprietary-game catalogue and select a permitted pilot game for a later phase. Keep work on feat/football-intel-foundation. Do not connect a live provider until current API routes, account entitlements and data rights are confirmed.
