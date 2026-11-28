@@ -8,6 +8,7 @@ from app.services.analysis import analyze_fixture
 from app.services.sqlite_store import SQLiteMarketStore
 from app.services.market_movement import summarize_odds_movement
 from app.services.market_taxonomy import MarketTaxonomyRegistry
+from app.services.data_quality import assess_market_freshness
 
 market_taxonomy = MarketTaxonomyRegistry()
 
@@ -48,6 +49,34 @@ def taxonomy_definitions():
         "definitions": market_taxonomy.definitions(),
         "provider_mappings_loaded": 0,
         "note": "Only explicitly verified provider mappings may classify source markets.",
+    }
+
+
+@app.get("/api/v1/providers/{provider_id}/events/{source_event_id}/freshness")
+def event_market_freshness(
+    provider_id: str,
+    source_event_id: str,
+    max_age_seconds: int = Query(default=300, ge=0, le=86400),
+):
+    """Assess collection recency separately from provider-source freshness."""
+    snapshots = market_store.snapshots_for_event(provider_id, source_event_id, limit=1)
+    latest = snapshots[0] if snapshots else None
+    results = []
+    for market in (latest or {}).get("markets", []):
+        results.append({
+            "source_market_id": market.get("source_market_id"),
+            "source_market_name": market.get("name"),
+            "freshness": assess_market_freshness(
+                market,
+                latest["captured_at"],
+                max_age_seconds=max_age_seconds,
+            ),
+        })
+    return {
+        "provider": provider_id,
+        "source_event_id": source_event_id,
+        "snapshot_found": latest is not None,
+        "markets": results,
     }
 
 
